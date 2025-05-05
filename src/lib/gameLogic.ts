@@ -1,7 +1,7 @@
 import { GameState, Tile, Owner, Movement, TickSpeed, Path, PathStep, Territory } from "../types/game";
 
 // Game version
-export const GAME_VERSION = '0.1.028';
+export const GAME_VERSION = '0.1.1.28';
 
 const DEFAULT_MAP_SIZE = 30;
 const LORD_GROWTH_RATE = 2;

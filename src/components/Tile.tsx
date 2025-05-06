@@ -5,13 +5,16 @@ import { Crown, Building2, Mountain } from 'lucide-react';
 import { createPathMovements } from '@/lib/gameLogic';
 import { showSupplyLineButton, hideSupplyLineButton, getCurrentSupplyLineButton } from '@/lib/supplyLine';
 import SupplyLineButton from './SupplyLineButton';
+import { queue } from '@/client/net/commandQueue';
+import { createMoveCommand } from '@/core/gameState';
 
 interface TileProps {
   tile: TileType;
   disablePropagation?: boolean;
+  style?: React.CSSProperties;
 }
 
-const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
+const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false, style }) => {
   const { gameState, selectTile, moveArmy, waypoints, setWaypoints } = useGame();
   const { selectedTile, minGarrison, territories, tiles } = gameState;
   const [mouseStartPos, setMouseStartPos] = useState<{ x: number, y: number } | null>(null);
@@ -30,7 +33,8 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
 
   // Check if this tile is on a territory border
   const isTerritoryBorder = useMemo(() => {
-    if (!tile.territory) return false;
+    const territory = territories.find(t => t.tiles.some(tile => tile.x === tile.x && tile.y === tile.y));
+    if (!territory) return false;
     
     const neighbors = [
       tiles.find(t => t.x === tile.x - 1 && t.y === tile.y),
@@ -39,19 +43,21 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
       tiles.find(t => t.x === tile.x && t.y === tile.y + 1)
     ].filter(Boolean);
     
-    return neighbors.some(neighbor => neighbor?.territory !== tile.territory);
-  }, [tile, tiles]);
+    return neighbors.some(neighbor => {
+      const neighborTerritory = territories.find(t => t.tiles.some(tile => tile.x === neighbor?.x && tile.y === neighbor?.y));
+      return neighborTerritory?.id !== territory.id;
+    });
+  }, [tile, tiles, territories]);
 
   // Determine if this tile can be moved to 
   const isValidTarget = useMemo(() => {
     // Only highlight if this is the player's selected tile
     if (!selectedTile) return false;
     if (selectedTile.owner !== 'player') return false;
-    if (tile.isMountain) return false;
     
     // Check if source has enough armies to move
     const availableArmy = selectedTile.owner ? 
-      Math.max(0, selectedTile.army - minGarrison) : selectedTile.army;
+      Math.max(0, selectedTile.armyCount - minGarrison) : selectedTile.armyCount;
     
     if (availableArmy <= 0) return false;
     
@@ -61,16 +67,16 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
   
   // Determine background color based on owner or territory
   const bgColor = useMemo(() => {
-    if (tile.isMountain) return 'bg-mountain';
+    const territory = territories.find(t => t.tiles.some(tile => tile.x === tile.x && tile.y === tile.y));
+    
     if (tile.owner === 'player') return 'bg-player';
     if (tile.owner === 'ai') return 'bg-opponent';
     
     // If neutral, show territory color
-    if (tile.territory !== null && territories && territories[tile.territory]) {
-      return `bg-[${territories[tile.territory].color}]`;
+    if (territory) {
+      return `bg-[${territory.color}]`;
     }
     
-    if (tile.isCity) return 'bg-city bg-opacity-30';
     return 'bg-neutral bg-opacity-20';
   }, [tile, territories]);
   
@@ -79,7 +85,7 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
     e.preventDefault();
     e.stopPropagation();
     
-    if (!selectedTile || tile.isMountain) return;
+    if (!selectedTile) return;
     
     // Don't allow waypoints on the source or destination tile
     if ((selectedTile.x === tile.x && selectedTile.y === tile.y) || 
@@ -112,7 +118,7 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
     e.stopPropagation();
     
     // If no tile is selected and this is player's tile with armies > 1, select it
-    if (!selectedTile && tile.owner === 'player' && tile.army > 1) {
+    if (!selectedTile && tile.owner === 'player' && tile.armyCount > 1) {
       selectTile(tile);
       return;
     }
@@ -161,6 +167,8 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
             movements: pathMovements,
             waypoints
           });
+          const command = createMoveCommand('player', pathMovements);
+          queue(command);
           moveArmy(pathMovements);
           selectTile(null);
           
@@ -177,7 +185,7 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
       }
       
       // Otherwise, try to select this tile if it's the player's and has more than 1 army
-      if (tile.owner === 'player' && tile.army > 1) {
+      if (tile.owner === 'player' && tile.armyCount > 1) {
         selectTile(tile);
       } else {
         selectTile(null);
@@ -255,21 +263,24 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
           const d = max - min;
           s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
           switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
+            case r:
+              h = (g - b) / d + (g < b ? 6 : 0);
+              break;
+            case g:
+              h = (b - r) / d + 2;
+              break;
+            case b:
+              h = (r - g) / d + 4;
+              break;
           }
           h /= 6;
         }
 
-        return { h: h * 360, s: s * 100, l: l * 100 };
+        return { h, s, l };
       };
 
       // Convert HSL to RGB
       const hslToRgb = (h: number, s: number, l: number) => {
-        h /= 360;
-        s /= 100;
-        l /= 100;
         let r, g, b;
 
         if (s === 0) {
@@ -298,166 +309,71 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         };
       };
 
-      const territoryRgb = hexToRgb(territoryColor);
-      const ownerColor = tile.owner === 'player' ? '#3B82F6' : '#EF4444'; // Blue for player, Red for AI
-      const ownerRgb = hexToRgb(ownerColor);
-      
-      if (territoryRgb && ownerRgb) {
-        // Convert territory color to HSL to get its base hue
-        const territoryHsl = rgbToHsl(territoryRgb.r, territoryRgb.g, territoryRgb.b);
-        
-        // Convert owner color to HSL to get its hue for variation
-        const ownerHsl = rgbToHsl(ownerRgb.r, ownerRgb.g, ownerRgb.b);
-        
-        // Calculate territory-specific hue variation
-        const territoryIndex = tile.territory || 0;
-        const totalTerritories = territories?.length || 1;
-        const hueSpan = 30; // ±15 degrees variation
-        const hueOffset = (territoryIndex / (totalTerritories - 1) - 0.5) * hueSpan;
-        
-        // Create the final color based on ownership
-        const finalHsl = {
-          h: tile.owner ? 
-            (ownerHsl.h + hueOffset + 360) % 360 : // For captured territories, use owner's hue
-            (territoryHsl.h + hueOffset + 360) % 360, // For neutral territories, use territory's base hue
-          s: tile.owner ? 80 : 50, // High saturation for captured, medium for neutral
-          l: tile.owner ? 30 : 80  // Dark for captured, light for neutral
-        };
-        
-        // Add slight variation to captured territories' lightness
-        if (tile.owner) {
-          finalHsl.l += (territoryIndex % 3 - 1) * 5; // Add ±5 lightness variation
-        }
-        
-        // Convert back to RGB
-        const finalRgb = hslToRgb(finalHsl.h, finalHsl.s, finalHsl.l);
-        
-        return { backgroundColor: `rgb(${finalRgb.r}, ${finalRgb.g}, ${finalRgb.b})` };
-      }
-      
-      // Handle non-territory owned tiles
-      if (tile.owner === 'player') {
-        return { backgroundColor: '#3B82F6' }; // Blue for player
-      } else if (tile.owner === 'ai') {
-        return { backgroundColor: '#EF4444' }; // Red for AI
-      }
-      
-      return {};
+      // Get the RGB values
+      const rgb = hexToRgb(territoryColor);
+      if (!rgb) return {};
+
+      // Convert to HSL
+      const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+
+      // Adjust lightness for border
+      const borderHsl = { ...hsl, l: Math.max(0, hsl.l - 0.1) };
+      const borderRgb = hslToRgb(borderHsl.h, borderHsl.s, borderHsl.l);
+
+      return {
+        backgroundColor: territoryColor,
+        borderColor: `rgb(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b})`
+      };
     }
-    
+
     return {};
   };
-  
-  // Determine if this tile is a waypoint
-  const isWaypoint = useMemo(() => {
-    return waypoints.some(wp => wp.x === tile.x && wp.y === tile.y);
-  }, [waypoints, tile.x, tile.y]);
 
-  // Get tile color based on visibility and other properties
+  // Get tile color based on state
   const getTileColor = () => {
-    if (!tile.isVisible) {
-      return '#808080'; // Grey for hidden tiles
-    }
-    
-    // For visible tiles, use the original territory/owner colors
-    if (tile.isMountain) {
-      return '#4A4A4A';
-    }
-    
-    if (tile.owner === 'player') {
-      return '#3B82F6'; // Blue for player
-    } else if (tile.owner === 'ai') {
-      return '#EF4444'; // Red for AI
-    }
-    
-    // For neutral tiles, use territory color if available
-    if (tile.territory !== null && territories && territories[tile.territory]) {
-      return territories[tile.territory].color;
-    }
-    
-    return '#FFFFFF';
+    if (tile.isMountain) return 'bg-mountain';
+    if (tile.isLord) return tile.owner === 'player' ? 'bg-player' : 'bg-opponent';
+    if (tile.isCity) return 'bg-city bg-opacity-30';
+    if (tile.owner === 'player') return 'bg-player';
+    if (tile.owner === 'ai') return 'bg-opponent';
+    return 'bg-neutral bg-opacity-20';
   };
 
-  // Get tile opacity based on visibility
+  // Get tile opacity based on state
   const getTileOpacity = () => {
-    if (!tile.isVisible) {
-      return 0.5; // Semi-transparent for hidden tiles
-    }
-    return 1;
+    if (tile.isSelected) return 'opacity-100';
+    if (tile.isHighlighted) return 'opacity-80';
+    if (tile.isPath) return 'opacity-60';
+    if (tile.isSupplyLine) return 'opacity-40';
+    return 'opacity-20';
   };
 
   return (
     <div
-      className={`
-        relative aspect-square 
-        ${!tile.owner && tile.isMountain ? 'bg-mountain' : ''}
-        ${!tile.owner && tile.isCity && !tile.isMountain ? 'bg-city bg-opacity-30' : ''}
-        ${!tile.owner && !tile.isCity && !tile.isMountain ? 'bg-neutral bg-opacity-20' : ''}
-        ${isValidTarget ? 'ring-2 ring-highlight cursor-pointer' : ''} 
-        ${selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y ? 'ring-2 ring-white' : ''}
-        ${isTerritoryBorder ? 'border border-gray-500' : ''}
-        ${isWaypoint ? 'ring-2 ring-yellow-400' : ''}
-        transition-all duration-150 hover:opacity-90
-        flex items-center justify-center
-        ${tile.owner ? 'text-white' : 'text-gray-300'}
-        ${(tile.owner === 'player' && tile.army > 0) ? 'cursor-pointer' : ''}
-      `}
-      style={{
-        backgroundColor: getTileColor(),
-        opacity: getTileOpacity(),
-        cursor: tile.owner === 'player' && tile.army > 1 ? 'pointer' : 'default'
-      }}
+      className={`relative w-12 h-12 border border-gray-700 ${getTileColor()} ${getTileOpacity()} transition-all duration-200 ${isTerritoryBorder ? 'border-2' : ''}`}
+      style={getTileStyle()}
       onClick={handleClick}
+      onContextMenu={handleRightClick}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onContextMenu={handleRightClick}
     >
-      {/* Army count */}
-      {tile.isVisible && !tile.isMountain && tile.army > 0 && (
-        <span className={`text-sm font-bold z-10 ${
-          tile.owner === 'player' ? 'text-white' : 
-          tile.owner === 'ai' ? 'text-gray-900' : 
-          'text-gray-800'
-        }`}>{tile.army}</span>
-      )}
-      
-      {/* Lord indicator */}
-      {tile.isVisible && tile.isLord && (
-        <div className="absolute top-0 left-0 p-0.5">
-          <Crown 
-            className={`h-3 w-3 ${
-              tile.owner === 'player' ? 'text-yellow-300' : 
-              tile.owner === 'ai' ? 'text-red-300' : 
-              'text-black'
-            }`} 
-          />
-        </div>
-      )}
-      
-      {/* Supply Line Button */}
-      {getCurrentSupplyLineButton()?.x === tile.x && getCurrentSupplyLineButton()?.y === tile.y && (
-        <SupplyLineButton x={tile.x} y={tile.y} />
-      )}
-      
-      {/* City indicator */}
-      {tile.isVisible && tile.isCity && (
-        <div className="absolute top-0 right-0 p-0.5">
-          <Building2 className={`h-3 w-3 ${tile.owner ? 'text-gray-300' : 'text-black'}`} />
-        </div>
-      )}
-      
-      {/* Mountain indicator */}
-      {tile.isMountain && (
-        <Mountain className="w-4 h-4 text-gray-400" />
-      )}
-      
-      {/* Waypoint indicator */}
-      {tile.isVisible && isWaypoint && (
-        <div className="absolute top-0 right-0 p-0.5">
-          <div className="w-2 h-2 bg-yellow-400 rounded-full" />
-        </div>
-      )}
+      {/* Tile content */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        {tile.isLord && <Crown className="w-6 h-6 text-yellow-400" />}
+        {tile.isCity && <Building2 className="w-6 h-6 text-gray-400" />}
+        {tile.isMountain && <Mountain className="w-6 h-6 text-gray-600" />}
+        {!tile.isLord && !tile.isCity && !tile.isMountain && tile.armyCount > 0 && (
+          <span className="text-sm font-bold text-white">{tile.armyCount}</span>
+        )}
+      </div>
+
+      {/* Supply line button */}
+      <div className="relative w-full h-full">
+        {getCurrentSupplyLineButton()?.x === tile.x && getCurrentSupplyLineButton()?.y === tile.y && (
+          <SupplyLineButton x={tile.x} y={tile.y} />
+        )}
+      </div>
     </div>
   );
 };

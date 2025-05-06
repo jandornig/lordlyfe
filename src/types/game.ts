@@ -1,19 +1,31 @@
-export type Owner = "player" | "ai" | null;
+export interface Player {
+  id: string;
+  name: string;
+  color: string;
+  isAI: boolean;
+}
 
 export interface Tile {
   x: number;
   y: number;
-  owner: Owner | null;
-  territory: number | null; // Territory ID
-  army: number;
+  armyCount: number;
+  owner: string | null;
   isLord: boolean;
-  isCity: boolean;
+  isVisible: boolean;
+  isSelected: boolean;
+  isHighlighted: boolean;
+  isPath: boolean;
+  isSupplyLine: boolean;
   isMountain: boolean;
-  isVisible: boolean; // Whether the tile is visible to the player
+  isCity: boolean;
+  territory: string | null;
 }
 
 export interface Territory {
-  id: number;
+  id: string;
+  owner: string | null;
+  tiles: Tile[];
+  armyCount: number;
   color: string;
   lordTile: { x: number, y: number } | null;
 }
@@ -27,42 +39,56 @@ export interface GameState {
   territories: Territory[];
   isPaused: boolean;
   isGameOver: boolean;
-  winner: Owner | null;
+  winner: string | null;
   selectedTile: Tile | null;
   movementQueue: Movement[];
-  minGarrison: number; // Minimum garrison size for owned tiles
+  minGarrison: number;
+  players: {
+    player: Player;
+    ai: Player;
+  };
 }
 
-export type Movement = {
-  from: { x: number, y: number };
-  to: { x: number, y: number };
-  owner: Owner;
-  army: number;
-  finalDestination: { x: number, y: number };
-  waypoints: { x: number, y: number }[];
-  mustReachWaypoint?: boolean;
-  isWaypoint?: boolean;
-};
+export type TickSpeed = 100 | 250 | 500 | 1000 | 2000;
+
+export interface Movement {
+  from: Tile;
+  to: Tile;
+  count: number;
+}
+
+export type Owner = "player" | "ai" | null;
+
+export interface Command {
+  playerId: string;
+  type: 'START_GAME' | 'SELECT_TILE' | 'MOVE_ARMY' | 'SET_TICK_SPEED' | 'TOGGLE_PAUSE' | 'END_GAME';
+  payload: {
+    width?: number;
+    height?: number;
+    tile?: Tile;
+    movements?: Movement[];
+    speed?: number;
+    winner?: string;
+  };
+}
 
 export interface Waypoint {
   x: number;
   y: number;
 }
 
-export type TickSpeed = 250 | 500 | 1000;
-
-export interface PanPosition {
+export type PanPosition = {
   x: number;
   y: number;
-}
+};
 
-export interface ZoomLevel {
+export type ZoomLevel = {
   scale: number;
-}
+};
 
-export interface PathStep {
+export type PathStep = {
   x: number;
   y: number;
-}
+};
 
 export type Path = PathStep[];

@@ -1,11 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useGame } from '@/contexts/GameContext';
-import { Tile as TileType } from '@/types/game';
+import { Tile as TileType, GameState } from '@/types/game';
 import TileComponent from '@/components/Tile';
 
-const GameGrid: React.FC = () => {
-  const { gameState, selectTile, setWaypoints } = useGame();
-  const { width, height, tiles } = gameState;
+interface GameGridProps {
+  state: GameState;
+  getInterpolatedPosition: (from: { x: number, y: number }, to: { x: number, y: number }) => { x: number, y: number };
+}
+
+const GameGrid: React.FC<GameGridProps> = ({ state, getInterpolatedPosition }) => {
+  const { selectTile, setWaypoints } = useGame();
+  const { width, height, tiles } = state;
   
   // State for panning
   const [isPanning, setIsPanning] = useState(false);
@@ -25,7 +30,7 @@ const GameGrid: React.FC = () => {
         setWaypoints([]);
       } else if (e.key.toLowerCase() === 'q') {
         // Clear movement queue and stop all armies
-        gameState.movementQueue = [];
+        state.movementQueue = [];
         // Force a re-render
         setWaypoints([]);
       }
@@ -33,7 +38,7 @@ const GameGrid: React.FC = () => {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectTile, setWaypoints, gameState]);
+  }, [selectTile, setWaypoints, state]);
   
   // Calculate tile size based on available viewport size
   const gridStyle = {
@@ -51,7 +56,7 @@ const GameGrid: React.FC = () => {
   
   // Center view on player's lord tile when game starts
   useEffect(() => {
-    if (gameState.tick === 0) {
+    if (state.tick === 0) {
       const playerLord = tiles.find(tile => tile.isLord && tile.owner === 'player');
       if (playerLord && gridRef.current) {
         const gridRect = gridRef.current.getBoundingClientRect();
@@ -61,7 +66,7 @@ const GameGrid: React.FC = () => {
         setPanPosition({ x: centerX, y: centerY });
       }
     }
-  }, [gameState.tick, tiles, width]);
+  }, [state.tick, tiles, width]);
   
   // Handle mouse events for panning
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -127,6 +132,32 @@ const GameGrid: React.FC = () => {
       }
     };
   }, [handleWheel]);
+
+  // Get interpolated position for moving pieces
+  const getTilePosition = (tile: TileType) => {
+    // If the tile is part of a movement, interpolate its position
+    const movement = state.movementQueue.find(m => 
+      (m.from.x === tile.x && m.from.y === tile.y) || 
+      (m.to.x === tile.x && m.to.y === tile.y)
+    );
+
+    if (movement) {
+      const interpolated = getInterpolatedPosition(
+        { x: movement.from.x, y: movement.from.y },
+        { x: movement.to.x, y: movement.to.y }
+      );
+      
+      // Add a small offset to prevent z-fighting during movement
+      const offset = 0.01;
+      return {
+        x: interpolated.x + offset,
+        y: interpolated.y + offset
+      };
+    }
+
+    // Otherwise return the tile's actual position
+    return { x: tile.x, y: tile.y };
+  };
   
   return (
     <div 
@@ -138,13 +169,22 @@ const GameGrid: React.FC = () => {
       ref={gridRef}
     >
       <div style={gridStyle}>
-        {tiles.map((tile) => (
-          <TileComponent
-            key={`${tile.x},${tile.y}`}
-            tile={tile}
-            disablePropagation={isPanning || hasPanned}
-          />
-        ))}
+        {tiles.map((tile) => {
+          const position = getTilePosition(tile);
+          return (
+            <TileComponent
+              key={`${tile.x},${tile.y}`}
+              tile={tile}
+              disablePropagation={isPanning || hasPanned}
+              style={{
+                gridColumn: position.x + 1,
+                gridRow: position.y + 1,
+                transition: 'grid-column 100ms linear, grid-row 100ms linear',
+                transform: `translate(${(position.x - Math.floor(position.x)) * 100}%, ${(position.y - Math.floor(position.y)) * 100}%)`
+              }}
+            />
+          );
+        })}
       </div>
     </div>
   );

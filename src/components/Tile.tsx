@@ -3,6 +3,8 @@ import { Tile as TileType } from '@/types/game';
 import { useGame } from '@/contexts/GameContext';
 import { Crown, Building2, Mountain } from 'lucide-react';
 import { createPathMovements } from '@/lib/gameLogic';
+import { showSupplyLineButton, hideSupplyLineButton, getCurrentSupplyLineButton } from '@/lib/supplyLine';
+import SupplyLineButton from './SupplyLineButton';
 
 interface TileProps {
   tile: TileType;
@@ -161,6 +163,9 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
           });
           moveArmy(pathMovements);
           selectTile(null);
+          
+          // Show supply line button at the endpoint
+          showSupplyLineButton(tile);
         } else {
           console.log('Failed to create movement with waypoints:', {
             from: currentSelectedTile,
@@ -178,6 +183,9 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         selectTile(null);
       }
     }
+    
+    // Hide supply line button on any click
+    hideSupplyLineButton();
   };
 
   // Track mouse down position
@@ -425,6 +433,11 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
             }`} 
           />
         </div>
+      )}
+      
+      {/* Supply Line Button */}
+      {getCurrentSupplyLineButton()?.x === tile.x && getCurrentSupplyLineButton()?.y === tile.y && (
+        <SupplyLineButton x={tile.x} y={tile.y} />
       )}
       
       {/* City indicator */}

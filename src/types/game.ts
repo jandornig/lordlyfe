@@ -31,11 +31,6 @@ export interface GameState {
   selectedTile: Tile | null;
   movementQueue: Movement[];
   minGarrison: number; // Minimum garrison size for owned tiles
-  supplyLines: SupplyLine[]; // Array of active supply lines
-  armies: Army[]; // Array of active armies
-  armyPool: Army[]; // Pool of reusable armies
-  pathCache: Map<string, Tile[]>; // Cache for calculated paths
-  maxSupplyChains: number; // Maximum number of supply chains allowed
 }
 
 export type Movement = {
@@ -71,21 +66,3 @@ export interface PathStep {
 }
 
 export type Path = PathStep[];
-
-export interface Army {
-  id: string;
-  owner: Owner;
-  position: Tile;
-  status: 'moving' | 'idle';
-}
-
-export interface SupplyLine {
-  id: string;
-  owner: Owner;
-  startPoint: Tile;
-  endPoint: Tile;
-  path: PathStep[];
-  isActive: boolean;
-  currentArmyId: string | null;
-  nextSpawnTick: number;
-}

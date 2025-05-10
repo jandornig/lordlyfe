@@ -40,7 +40,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   return (
     <WebSocketContext.Provider value={{ wsService, isConnected }}>
-      {children}
+        {children}
     </WebSocketContext.Provider>
   );
 }; 

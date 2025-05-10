@@ -225,6 +225,7 @@ export class GameStateManager {
   }
 
   private handleArmyMovement(payload: any): void {
+    console.log('[GameStateManager] Handling army movement payload:', payload);
     const { playerId, action } = payload;
     const { from, to } = action.data;
     console.log('[GameStateManager] Player moving army:', { playerId, from, to });
@@ -244,6 +245,9 @@ export class GameStateManager {
       return;
     }
 
+    console.log('[GameStateManager] Before move - Source tile:', { x: fromTile.x, y: fromTile.y, army: fromTile.army, owner: fromTile.owner });
+    console.log('[GameStateManager] Before move - Destination tile:', { x: toTile.x, y: toTile.y, army: toTile.army, owner: toTile.owner });
+
     // Move armies
     const armiesToMove = Math.floor(fromTile.army / 2);
     fromTile.army -= armiesToMove;
@@ -254,10 +258,8 @@ export class GameStateManager {
       toTile.owner = playerId;
     }
 
-    console.log('[GameStateManager] Army movement completed:', {
-      from: { x: fromTile.x, y: fromTile.y, army: fromTile.army },
-      to: { x: toTile.x, y: toTile.y, army: toTile.army, owner: toTile.owner }
-    });
+    console.log('[GameStateManager] After move - Source tile:', { x: fromTile.x, y: fromTile.y, army: fromTile.army, owner: fromTile.owner });
+    console.log('[GameStateManager] After move - Destination tile:', { x: toTile.x, y: toTile.y, army: toTile.army, owner: toTile.owner });
 
     // Broadcast the updated state
     this.broadcastState();

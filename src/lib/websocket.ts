@@ -42,7 +42,7 @@ export class WebSocketService {
       }
 
       this.ws = new WebSocket(wsUrl);
-
+      
       this.ws.addEventListener('open', () => {
         this.connectionState = 'connected';
         this.lastError = null;
@@ -116,7 +116,7 @@ export class WebSocketService {
     return () => {
       this.messageHandlers.delete(handler);
     };
-  }
+    }
 
   private notifyHandlers(message: ServerMessage) {
     this.messageHandlers.forEach(handler => {
@@ -179,4 +179,4 @@ export class WebSocketService {
     this.lastError = null;
     this.reconnectAttempts = 0;
   }
-}
+} 

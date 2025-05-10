@@ -31,7 +31,7 @@ server.listen(port, () => {
 // Handle process termination
 const cleanup = () => {
   console.log('\n[Server] Shutting down...');
-  
+
   // Clean up game state
   gameStateManager.cleanup();
   

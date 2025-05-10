@@ -106,7 +106,7 @@ export const Tile: React.FC<TileProps> = ({ x, y }) => {
       )}
       {tile.isMountain && (
         <div className="absolute top-1 left-1">
-          <Mountain className="w-4 h-4 text-gray-400" />
+        <Mountain className="w-4 h-4 text-gray-400" />
         </div>
       )}
       {tile.army > 0 && (

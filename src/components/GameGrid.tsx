@@ -4,8 +4,8 @@ import { Tile as TileType } from '@/types/game';
 import TileComponent from '@/components/Tile';
 
 const GameGrid: React.FC = () => {
-  const { gameState, selectTile, setWaypoints } = useGame();
-  const { width, height, tiles } = gameState;
+  const { state, selectTile, setWaypoints } = useGame();
+  const { width, height, tiles } = state;
   
   // State for panning
   const [isPanning, setIsPanning] = useState(false);
@@ -25,7 +25,7 @@ const GameGrid: React.FC = () => {
         setWaypoints([]);
       } else if (e.key.toLowerCase() === 'q') {
         // Clear movement queue and stop all armies
-        gameState.movementQueue = [];
+        state.movementQueue = [];
         // Force a re-render
         setWaypoints([]);
       }
@@ -33,7 +33,7 @@ const GameGrid: React.FC = () => {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectTile, setWaypoints, gameState]);
+  }, [selectTile, setWaypoints, state]);
   
   // Calculate tile size based on available viewport size
   const gridStyle = {
@@ -51,17 +51,25 @@ const GameGrid: React.FC = () => {
   
   // Center view on player's lord tile when game starts
   useEffect(() => {
-    if (gameState.tick === 0) {
+    if (state.tick === 0) {
       const playerLord = tiles.find(tile => tile.isLord && tile.owner === 'player');
       if (playerLord && gridRef.current) {
         const gridRect = gridRef.current.getBoundingClientRect();
         const tileSize = gridRect.width / width;
-        const centerX = (gridRect.width / 2) - ((playerLord.x + 0.5) * tileSize);
-        const centerY = (gridRect.height / 2) - ((playerLord.y + 0.5) * tileSize) - (gridRect.height * 0.1); // Adjust vertical offset
-        setPanPosition({ x: centerX, y: centerY });
+        // Calculate the center position of the grid
+        const gridCenterX = gridRect.width / 2;
+        const gridCenterY = gridRect.height / 2;
+        // Calculate the position of the player's lord tile
+        const lordCenterX = (playerLord.x + 0.5) * tileSize;
+        const lordCenterY = (playerLord.y + 0.5) * tileSize;
+        // Set the pan position to center the lord tile
+        setPanPosition({
+          x: gridCenterX - lordCenterX,
+          y: gridCenterY - lordCenterY
+        });
       }
     }
-  }, [gameState.tick, tiles, width]);
+  }, [state.tick, tiles, width]);
   
   // Handle mouse events for panning
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -141,8 +149,8 @@ const GameGrid: React.FC = () => {
         {tiles.map((tile) => (
           <TileComponent
             key={`${tile.x},${tile.y}`}
-            tile={tile}
-            disablePropagation={isPanning || hasPanned}
+            x={tile.x}
+            y={tile.y}
           />
         ))}
       </div>

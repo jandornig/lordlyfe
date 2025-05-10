@@ -13,7 +13,7 @@ import {
 
 // Define the shape of the context
 interface GameContextType {
-  gameState: GameState;
+  state: GameState;
   startGame: (width?: number, height?: number) => void;
   restartGame: () => void;
   selectTile: (tile: Tile | null) => void;
@@ -147,7 +147,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   return (
     <GameContext.Provider
       value={{
-        gameState,
+        state: gameState,
         startGame,
         restartGame,
         selectTile,

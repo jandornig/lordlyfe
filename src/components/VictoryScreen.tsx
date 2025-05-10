@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Trophy } from 'lucide-react';
 
 const VictoryScreen: React.FC = () => {
-  const { gameState, restartGame } = useGame();
-  const { winner } = gameState;
+  const { state, restartGame } = useGame();
+  const { winner } = state;
   
-  if (!gameState.isGameOver) {
+  if (!state.isGameOver) {
     return null;
   }
   

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,7 @@ import { Play, Pause, RefreshCw } from 'lucide-react';
 import { TickSpeed } from '@/types/game';
 
 const GameControls: React.FC = () => {
-  const { gameState, startGame, restartGame, togglePause, setTickSpeed } = useGame();
+  const { state, startGame, restartGame, togglePause, setTickSpeed } = useGame();
   
   const handleSpeedChange = (value: string) => {
     setTickSpeed(parseInt(value) as TickSpeed);
@@ -30,7 +29,7 @@ const GameControls: React.FC = () => {
           onClick={togglePause}
           className="flex items-center gap-2"
         >
-          {gameState.isPaused ? (
+          {state.isPaused ? (
             <>
               <Play className="h-4 w-4" />
               Resume
@@ -48,8 +47,8 @@ const GameControls: React.FC = () => {
         <span className="text-sm text-gray-300">Speed:</span>
         <Select 
           onValueChange={handleSpeedChange}
-          defaultValue={gameState.tickSpeed.toString()}
-          disabled={!gameState.isPaused}
+          defaultValue={state.tickSpeed.toString()}
+          disabled={!state.isPaused}
         >
           <SelectTrigger className="w-24">
             <SelectValue placeholder="Speed" />

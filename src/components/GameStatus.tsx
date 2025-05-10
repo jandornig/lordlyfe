@@ -3,10 +3,10 @@ import { useGame } from '@/contexts/GameContext';
 import { GAME_VERSION } from '@/lib/gameLogic';
 
 const GameStatus: React.FC = () => {
-  const { gameState } = useGame();
+  const { state } = useGame();
   
   // Count army totals for each player
-  const armyTotals = gameState.tiles.reduce(
+  const armyTotals = state.tiles.reduce(
     (acc, tile) => {
       if (tile.owner === 'player') {
         acc.player += tile.army;
@@ -19,7 +19,7 @@ const GameStatus: React.FC = () => {
   );
   
   // Count territory tiles for each player
-  const territoryCount = gameState.tiles.reduce(
+  const territoryCount = state.tiles.reduce(
     (acc, tile) => {
       if (tile.owner === 'player') {
         acc.player += 1;
@@ -43,7 +43,7 @@ const GameStatus: React.FC = () => {
       
       <div className="text-center">
         <div className="text-gray-400 mb-1">Tick</div>
-        <div className="text-xl font-bold text-white">{gameState.tick}</div>
+        <div className="text-xl font-bold text-white">{state.tick}</div>
         <div className="text-sm font-medium text-gray-300 mt-1">v{GAME_VERSION}</div>
       </div>
       

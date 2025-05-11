@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGame } from '@/contexts/GameContext';
-import { GAME_VERSION } from '@/lib/gameLogic';
+import { GAME_VERSION } from '@/lib/constants';
 
 const GameStatus: React.FC = () => {
   const { gameState } = useGame();

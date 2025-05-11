@@ -1,15 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { GameState, Tile, TickSpeed, Movement, Territory } from '../types/game';
-import {
-  createNewGame,
-  processTick,
-  isValidMove,
-  createMovement,
-  enqueueMoves,
-  setTickSpeed as setSpeed,
-  togglePause as toggleGamePause,
-  createPathMovements
-} from '../lib/gameLogic';
+import { GameState, Tile, TickSpeed, Movement } from '../types/game';
+import { socket } from '../services/socket';
 
 // Define the shape of the context
 interface GameContextType {
@@ -29,22 +20,16 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 
 // Define action types for the reducer
 type GameAction =
-  | { type: 'INITIALIZE_GAME'; payload: { width?: number; height?: number } }
-  | { type: 'TICK' }
+  | { type: 'SET_GAME_STATE'; payload: GameState }
   | { type: 'SELECT_TILE'; payload: { tile: Tile | null } }
-  | { type: 'MOVE_ARMY'; payload: { movements: Movement[] } }
   | { type: 'SET_TICK_SPEED'; payload: { speed: TickSpeed } }
-  | { type: 'TOGGLE_PAUSE' }
-  | { type: 'PROCESS_TICK' };
+  | { type: 'TOGGLE_PAUSE' };
 
 // Define the reducer function
 const gameReducer = (state: GameState, action: GameAction): GameState => {
   switch (action.type) {
-    case 'INITIALIZE_GAME':
-      return createNewGame(action.payload.width, action.payload.height);
-
-    case 'TICK':
-      return processTick(state);
+    case 'SET_GAME_STATE':
+      return action.payload;
 
     case 'SELECT_TILE':
       return {
@@ -52,22 +37,17 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
         selectedTile: action.payload.tile,
       };
 
-    case 'MOVE_ARMY': {
-      const { movements } = action.payload;
-      if (movements.length === 0) {
-        return state;
-      }
-      return enqueueMoves(state, movements);
-    }
-
     case 'SET_TICK_SPEED':
-      return setSpeed(state, action.payload.speed);
+      return {
+        ...state,
+        tickSpeed: action.payload.speed,
+      };
 
     case 'TOGGLE_PAUSE':
-      return toggleGamePause(state);
-
-    case 'PROCESS_TICK':
-      return processTick(state);
+      return {
+        ...state,
+        isPaused: !state.isPaused,
+      };
 
     default:
       return state;
@@ -80,35 +60,49 @@ interface GameProviderProps {
 
 // Create the provider component
 export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
-  // Initialize with a default empty game state that includes territories
-  const initialState = createNewGame();
+  const initialState: GameState = {
+    tiles: [],
+    territories: [],
+    selectedTile: null,
+    minGarrison: 1,
+    tick: 0,
+    isPaused: true,
+    tickSpeed: 1000,
+    width: 20,
+    height: 20,
+    isGameOver: false,
+    movementQueue: []
+  };
   
   const [gameState, dispatch] = useReducer(gameReducer, initialState);
-  
   const [waypoints, setWaypoints] = React.useState<{ x: number, y: number }[]>([]);
   
-  // Handle game ticks
-  useEffect(() => {
-    if (gameState.isPaused || gameState.isGameOver) {
-      return;
-    }
+  // Listen for game state updates from server
+  React.useEffect(() => {
+    const handleGameStateUpdate = (newState: GameState) => {
+      // Preserve the selected tile when updating state
+      const currentSelectedTile = gameState.selectedTile;
+      dispatch({ 
+        type: 'SET_GAME_STATE', 
+        payload: {
+          ...newState,
+          selectedTile: currentSelectedTile
+        }
+      });
+    };
+
+    socket.on('game-state-update', handleGameStateUpdate);
+    socket.on('game-started', handleGameStateUpdate);
     
-    const tickInterval = setInterval(() => {
-      dispatch({ type: 'TICK' });
-    }, gameState.tickSpeed);
-    
-    return () => clearInterval(tickInterval);
-  }, [gameState.isPaused, gameState.isGameOver, gameState.tickSpeed]);
+    return () => {
+      socket.off('game-state-update', handleGameStateUpdate);
+      socket.off('game-started', handleGameStateUpdate);
+    };
+  }, [gameState.selectedTile]); // Add selectedTile to dependencies
   
   // Game actions
   const startGame = useCallback((width?: number, height?: number) => {
-    dispatch({ 
-      type: 'INITIALIZE_GAME', 
-      payload: { width, height } 
-    });
-    
-    // Start game immediately
-    dispatch({ type: 'TOGGLE_PAUSE' });
+    socket.emit('start-game', { width, height });
   }, []);
   
   const restartGame = useCallback(() => {
@@ -126,14 +120,12 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   }, []);
   
   const moveArmy = useCallback((movements: Movement[]) => {
-    dispatch({
-      type: 'MOVE_ARMY',
-      payload: { movements }
-    });
+    socket.emit('move-army', { movements });
     setWaypoints([]);
   }, []);
   
   const setTickSpeed = useCallback((speed: TickSpeed) => {
+    socket.emit('set-tick-speed', { speed });
     dispatch({
       type: 'SET_TICK_SPEED',
       payload: { speed }
@@ -141,8 +133,14 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   }, []);
   
   const togglePause = useCallback(() => {
+    console.log('Client: Toggling pause, current state:', {
+      isPaused: gameState.isPaused,
+      tick: gameState.tick,
+      tickSpeed: gameState.tickSpeed
+    });
+    socket.emit('toggle-pause');
     dispatch({ type: 'TOGGLE_PAUSE' });
-  }, []);
+  }, [gameState.isPaused, gameState.tick, gameState.tickSpeed]);
   
   return (
     <GameContext.Provider

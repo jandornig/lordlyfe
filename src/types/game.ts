@@ -1,68 +1,40 @@
-export type Owner = "player" | "ai" | null;
+export type TickSpeed = number;
 
 export interface Tile {
   x: number;
   y: number;
-  owner: Owner | null;
-  territory: number | null; // Territory ID
   army: number;
-  isLord: boolean;
-  isCity: boolean;
+  owner: 'player' | 'ai' | null;
+  territory: number | null;
   isMountain: boolean;
-  isVisible: boolean; // Whether the tile is visible to the player
+  isCity: boolean;
+  isLord: boolean;
+  isVisible: boolean;
 }
 
 export interface Territory {
   id: number;
+  name: string;
   color: string;
-  lordTile: { x: number, y: number } | null;
+  lordTile: Tile;
 }
 
 export interface GameState {
-  width: number;
-  height: number;
-  tick: number;
-  tickSpeed: number;
   tiles: Tile[];
   territories: Territory[];
-  isPaused: boolean;
-  isGameOver: boolean;
-  winner: Owner | null;
   selectedTile: Tile | null;
+  minGarrison: number;
+  tick: number;
+  isPaused: boolean;
+  tickSpeed: TickSpeed;
+  width: number;
+  height: number;
+  isGameOver: boolean;
   movementQueue: Movement[];
-  minGarrison: number; // Minimum garrison size for owned tiles
 }
 
-export type Movement = {
-  from: { x: number, y: number };
-  to: { x: number, y: number };
-  owner: Owner;
-  army: number;
-  finalDestination: { x: number, y: number };
-  waypoints: { x: number, y: number }[];
-  mustReachWaypoint?: boolean;
-  isWaypoint?: boolean;
-};
-
-export interface Waypoint {
-  x: number;
-  y: number;
-}
-
-export type TickSpeed = 250 | 500 | 1000;
-
-export interface PanPosition {
-  x: number;
-  y: number;
-}
-
-export interface ZoomLevel {
-  scale: number;
-}
-
-export interface PathStep {
-  x: number;
-  y: number;
-}
-
-export type Path = PathStep[];
+export interface Movement {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  waypoints: { x: number; y: number }[];
+} 

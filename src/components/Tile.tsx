@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { Tile as TileType } from '@/types/game';
 import { useGame } from '@/contexts/GameContext';
 import { Crown, Building2, Mountain } from 'lucide-react';
-import { createPathMovements } from '@/lib/gameLogic';
+import { requestMovement } from '@/lib/movement';
 import { showSupplyLineButton, hideSupplyLineButton, getCurrentSupplyLineButton } from '@/lib/supplyLine';
 import SupplyLineButton from './SupplyLineButton';
 
@@ -42,22 +42,10 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
     return neighbors.some(neighbor => neighbor?.territory !== tile.territory);
   }, [tile, tiles]);
 
-  // Determine if this tile can be moved to 
-  const isValidTarget = useMemo(() => {
-    // Only highlight if this is the player's selected tile
-    if (!selectedTile) return false;
-    if (selectedTile.owner !== 'player') return false;
-    if (tile.isMountain) return false;
-    
-    // Check if source has enough armies to move
-    const availableArmy = selectedTile.owner ? 
-      Math.max(0, selectedTile.army - minGarrison) : selectedTile.army;
-    
-    if (availableArmy <= 0) return false;
-    
-    // Only highlight the selected tile
-    return selectedTile.x === tile.x && selectedTile.y === tile.y;
-  }, [selectedTile, tile, minGarrison]);
+  // Determine if this tile can be selected
+  const canSelect = useMemo(() => {
+    return tile.owner === 'player' && tile.army > 1;
+  }, [tile]);
   
   // Determine background color based on owner or territory
   const bgColor = useMemo(() => {
@@ -100,9 +88,20 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
   };
 
   // Handle tile click
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = async (e: React.MouseEvent) => {
+    // Log raw click event
+    console.log('=== Raw Click Event ===', {
+      target: e.target,
+      currentTarget: e.currentTarget,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      timeStamp: e.timeStamp,
+      type: e.type
+    });
+
     // Prevent click if panning
     if (disablePropagation) {
+      console.log('Click prevented due to panning');
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -111,16 +110,57 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
     // Stop propagation to prevent panning when clicking on tiles
     e.stopPropagation();
     
+    console.log('Click handler state:', {
+      selectedTile: selectedTile ? {
+        x: selectedTile.x,
+        y: selectedTile.y,
+        army: selectedTile.army,
+        owner: selectedTile.owner
+      } : null,
+      clickedTile: {
+        x: tile.x,
+        y: tile.y,
+        army: tile.army,
+        owner: tile.owner,
+        isMountain: tile.isMountain
+      },
+      canSelect,
+      waypoints
+    });
+    
     // If no tile is selected and this is player's tile with armies > 1, select it
-    if (!selectedTile && tile.owner === 'player' && tile.army > 1) {
+    if (!selectedTile && canSelect) {
+      console.log('Selecting tile:', {
+        x: tile.x,
+        y: tile.y,
+        army: tile.army,
+        owner: tile.owner,
+        type: tile.isLord ? 'lord' : tile.isCity ? 'city' : 'territory'
+      });
       selectTile(tile);
       return;
     }
     
     // If a tile is already selected
     if (selectedTile) {
+      console.log('Processing click with selected tile:', {
+        selectedTile: {
+          x: selectedTile.x,
+          y: selectedTile.y,
+          army: selectedTile.army,
+          owner: selectedTile.owner
+        },
+        clickedTile: {
+          x: tile.x,
+          y: tile.y,
+          army: tile.army,
+          owner: tile.owner
+        }
+      });
+
       // If clicking on the same tile
       if (selectedTile.x === tile.x && selectedTile.y === tile.y) {
+        console.log('Clicked on same tile, deselecting');
         // If no waypoints, deselect
         if (waypoints.length === 0) {
           selectTile(null);
@@ -131,6 +171,7 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
       
       // If clicking on another tile with a selected tile, initiate movement
       if (selectedTile.owner === 'player') {
+        console.log('Attempting movement from player tile');
         // Get the current state of the selected tile
         const currentSelectedTile = gameState.tiles.find(t => 
           t.x === selectedTile.x && t.y === selectedTile.y
@@ -141,45 +182,48 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
           return;
         }
 
-        console.log('Creating movement with waypoints:', {
-          from: currentSelectedTile,
-          to: tile,
+        console.log('Initiating movement:', {
+          from: {
+            x: currentSelectedTile.x,
+            y: currentSelectedTile.y,
+            army: currentSelectedTile.army,
+            owner: currentSelectedTile.owner
+          },
+          to: {
+            x: tile.x,
+            y: tile.y,
+            army: tile.army,
+            owner: tile.owner
+          },
           waypoints,
-          waypointsLength: waypoints.length,
-          waypointsArray: Array.from(waypoints),
-          currentState: {
-            selectedTile: currentSelectedTile,
-            currentTile: tile,
-            waypoints
-          }
+          waypointsLength: waypoints.length
         });
 
-        const pathMovements = createPathMovements(gameState, currentSelectedTile, tile, 1, waypoints);
+        const success = await requestMovement(gameState, currentSelectedTile, tile, waypoints);
         
-        if (pathMovements.length > 0) {
-          console.log('Movement created with waypoints:', {
-            movements: pathMovements,
-            waypoints
-          });
-          moveArmy(pathMovements);
+        if (success) {
+          console.log('Movement request sent successfully');
           selectTile(null);
           
           // Show supply line button at the endpoint
           showSupplyLineButton(tile);
         } else {
-          console.log('Failed to create movement with waypoints:', {
-            from: currentSelectedTile,
-            to: tile,
-            waypoints
-          });
+          console.log('Movement request failed');
         }
         return;
       }
       
       // Otherwise, try to select this tile if it's the player's and has more than 1 army
-      if (tile.owner === 'player' && tile.army > 1) {
+      if (canSelect) {
+        console.log('Selecting new tile:', {
+          x: tile.x,
+          y: tile.y,
+          army: tile.army,
+          owner: tile.owner
+        });
         selectTile(tile);
       } else {
+        console.log('Deselecting tile - clicked tile not selectable');
         selectTile(null);
       }
     }
@@ -393,7 +437,7 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         ${!tile.owner && tile.isMountain ? 'bg-mountain' : ''}
         ${!tile.owner && tile.isCity && !tile.isMountain ? 'bg-city bg-opacity-30' : ''}
         ${!tile.owner && !tile.isCity && !tile.isMountain ? 'bg-neutral bg-opacity-20' : ''}
-        ${isValidTarget ? 'ring-2 ring-highlight cursor-pointer' : ''} 
+        ${canSelect ? 'ring-2 ring-highlight cursor-pointer' : ''} 
         ${selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y ? 'ring-2 ring-white' : ''}
         ${isTerritoryBorder ? 'border border-gray-500' : ''}
         ${isWaypoint ? 'ring-2 ring-yellow-400' : ''}

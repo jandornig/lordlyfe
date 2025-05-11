@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { Tile as TileType } from '@/types/game';
 import TileComponent from '@/components/Tile';
+import { socket } from '@/services/socket';
 
 const GameGrid: React.FC = () => {
   const { gameState, selectTile, setWaypoints } = useGame();
@@ -24,16 +25,14 @@ const GameGrid: React.FC = () => {
         selectTile(null);
         setWaypoints([]);
       } else if (e.key.toLowerCase() === 'q') {
-        // Clear movement queue and stop all armies
-        gameState.movementQueue = [];
-        // Force a re-render
-        setWaypoints([]);
+        // Send clear movement queue request to server
+        socket.emit('clear-movement-queue');
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectTile, setWaypoints, gameState]);
+  }, [selectTile, setWaypoints]);
   
   // Calculate tile size based on available viewport size
   const gridStyle = {
@@ -112,7 +111,19 @@ const GameGrid: React.FC = () => {
       setIsPanning(false);
     };
     
+    const handleGlobalClick = (e: MouseEvent) => {
+      console.log('=== Global Click Event ===', {
+        target: e.target,
+        currentTarget: e.currentTarget,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        timeStamp: e.timeStamp,
+        type: e.type
+      });
+    };
+    
     window.addEventListener('mouseup', handleGlobalMouseUp);
+    window.addEventListener('click', handleGlobalClick);
     
     // Add wheel event listener for zooming
     const currentGridRef = gridRef.current;
@@ -122,6 +133,7 @@ const GameGrid: React.FC = () => {
     
     return () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('click', handleGlobalClick);
       if (currentGridRef) {
         currentGridRef.removeEventListener('wheel', handleWheel);
       }

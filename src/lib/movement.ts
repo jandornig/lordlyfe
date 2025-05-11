@@ -34,13 +34,25 @@ export const requestMovement = async (
       return false;
     }
 
+    // Calculate available armies (total - 1 for garrison)
+    const availableArmies = fromTile.army - 1;
+    const armyPercentage = availableArmies / fromTile.army;
+
+    console.log('Movement request:', {
+      from: fromTile,
+      to: toTile,
+      totalArmies: fromTile.army,
+      availableArmies,
+      armyPercentage
+    });
+
     // Send movement request via WebSocket
     socket.emit('move-army', {
       movements: [{
         from: { x: fromTile.x, y: fromTile.y },
         to: { x: toTile.x, y: toTile.y },
         waypoints,
-        armyPercentage: 0.5 // Move half the armies
+        armyPercentage
       }]
     });
 

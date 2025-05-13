@@ -44,16 +44,20 @@ export interface Path {
 }
 
 export interface GameState {
-  width: number;
-  height: number;
-  tick: number;
-  tickSpeed: number;
   tiles: Tile[];
   territories: Territory[];
-  isPaused: boolean;
-  isGameOver: boolean;
-  winner: Owner;
   selectedTile: Tile | null;
-  movementQueue: Movement[];
   minGarrison: number;
+  tick: number;
+  isPaused: boolean;
+  tickSpeed: number;
+  width: number;
+  height: number;
+  isGameOver: boolean;
+  movementQueue: Movement[];
+  playerId: string;
+  playerName: string;
+  player2Id: string;
+  player2Name: string;
+  winner: Owner | null;
 } 

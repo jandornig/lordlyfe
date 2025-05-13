@@ -4,6 +4,8 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import { gameStateManager } from './game/gameState';
 import { createPathMovements } from './game/gameLogic';
+import { matchmakingQueue } from './game/matchmaking';
+import { Tile } from './types/game';
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,23 +31,36 @@ app.get('/', (req, res) => {
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  const clientId = socket.handshake.auth.clientId;
+  console.log('Client connected:', clientId);
+
+  // Handle player connection
+  socket.on('player-connect', (data: { playerId: string, playerName: string }) => {
+    // Only log the first connection for each player
+    if (!socket.data.hasConnected) {
+      console.log('Player connected:', {
+        playerId: data.playerId,
+        playerName: data.playerName
+      });
+      socket.data.hasConnected = true;
+    }
+  });
 
   // Handle disconnection
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    console.log('Client disconnected:', clientId);
+    matchmakingQueue.removePlayer(socket.id);
   });
 
   // Handle game start
-  socket.on('start-game', (data: { width?: number, height?: number }) => {
-    console.log('Starting new game with dimensions:', data);
-    const gameState = gameStateManager.initializeGame(data.width, data.height);
-    console.log('Game state after initialization:', {
-      isPaused: gameState.isPaused,
-      tick: gameState.tick,
-      tickSpeed: gameState.tickSpeed
+  socket.on('start-game', (data: { width?: number, height?: number, playerId: string, playerName: string }) => {
+    console.log('Player starting game:', data);
+    // Add player to matchmaking queue
+    matchmakingQueue.addPlayer({
+      playerId: data.playerId,
+      playerName: data.playerName,
+      socketId: socket.id
     });
-    socket.emit('game-started', gameState);
   });
 
   // Handle movement requests
@@ -65,8 +80,8 @@ io.on('connection', (socket) => {
       
       // Process each movement
       for (const movement of data.movements) {
-        const fromTile = gameState.tiles.find(t => t.x === movement.from.x && t.y === movement.from.y);
-        const toTile = gameState.tiles.find(t => t.x === movement.to.x && t.y === movement.to.y);
+        const fromTile = gameState.tiles.find((t: Tile) => t.x === movement.from.x && t.y === movement.from.y);
+        const toTile = gameState.tiles.find((t: Tile) => t.x === movement.to.x && t.y === movement.to.y);
         
         console.log('Processing click:', {
           from: fromTile ? { 

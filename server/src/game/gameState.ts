@@ -29,28 +29,42 @@ class GameStateManager {
     }, this.gameState.tickSpeed);
   }
 
-  initializeGame(width?: number, height?: number): GameState {
+  initializeGame(
+    width: number, 
+    height: number, 
+    playerId: string, 
+    playerName: string,
+    player2Id: string,
+    player2Name: string
+  ): GameState {
     console.log('Initializing new game...');
     
-    // Create new game state with isPaused set to false to start the game immediately
+    // Create new game state using existing function
     this.gameState = {
       ...createNewGame(width, height),
-      isPaused: false, // Start unpaused
-      tick: 0
+      isPaused: false,
+      playerId,
+      playerName,
+      player2Id,
+      player2Name
     };
     
     console.log('Game state initialized:', {
       isPaused: this.gameState.isPaused,
       tick: this.gameState.tick,
-      tickSpeed: this.gameState.tickSpeed
+      tickSpeed: this.gameState.tickSpeed,
+      playerId: this.gameState.playerId,
+      playerName: this.gameState.playerName,
+      player2Id: this.gameState.player2Id,
+      player2Name: this.gameState.player2Name
     });
-    
+
     // Start the tick loop
     this.startTickLoop();
     
     // Emit initial state
     io.emit('game-state-update', this.gameState);
-    
+
     return this.gameState;
   }
 

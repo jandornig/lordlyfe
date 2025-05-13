@@ -1,13 +1,39 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface StartScreenProps {
-  onStart: () => void;
+  onStart: (playerName: string) => void;
 }
 
 const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
+  const [playerName, setPlayerName] = useState('');
+  const [error, setError] = useState('');
+
+  const validateName = (name: string): boolean => {
+    if (!name) {
+      setError('Name is required');
+      return false;
+    }
+    if (name.length > 10) {
+      setError('Name must be 10 characters or less');
+      return false;
+    }
+    if (!/^[a-zA-Z0-9]+$/.test(name)) {
+      setError('Name can only contain letters and numbers');
+      return false;
+    }
+    setError('');
+    return true;
+  };
+
+  const handleStartGame = () => {
+    if (validateName(playerName)) {
+      onStart(playerName);
+    }
+  };
+
   return (
     <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center z-10">
       <div className="mb-8 text-center">
@@ -36,10 +62,33 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
             <span>Capture the enemy lord to win the game.</span>
           </li>
         </ul>
-        
-        <Button onClick={onStart} className="w-full">
-          Start Game
-        </Button>
+
+        <div className="space-y-4">
+          <div>
+            <Input
+              type="text"
+              placeholder="Enter your name (max 10 characters)"
+              value={playerName}
+              onChange={(e) => {
+                setPlayerName(e.target.value);
+                if (error) validateName(e.target.value);
+              }}
+              maxLength={10}
+              className="w-full text-gray-800"
+            />
+            {error && (
+              <p className="text-red-500 text-sm mt-1">{error}</p>
+            )}
+          </div>
+          
+          <Button 
+            onClick={handleStartGame} 
+            className="w-full"
+            disabled={!!error}
+          >
+            Start Game
+          </Button>
+        </div>
       </div>
     </div>
   );

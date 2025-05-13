@@ -31,6 +31,8 @@ export interface GameState {
   height: number;
   isGameOver: boolean;
   movementQueue: Movement[];
+  playerId: string;
+  playerName: string;
 }
 
 export interface Movement {

@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameProvider } from '@/contexts/GameContext';
 import { useGame } from '@/contexts/GameContext';
 import GameGrid from './GameGrid';
@@ -7,18 +6,50 @@ import GameControls from './GameControls';
 import GameStatus from './GameStatus';
 import VictoryScreen from './VictoryScreen';
 import StartScreen from './StartScreen';
+import LoadingScreen from './LoadingScreen';
+import { socket } from '@/services/socket';
+
+type GameState = 'start' | 'matchmaking' | 'playing';
 
 const GameContent: React.FC = () => {
   const { gameState, startGame } = useGame();
   const [gameStarted, setGameStarted] = useState(false);
+  const [currentState, setCurrentState] = useState<GameState>('start');
+  const [loadingMessage, setLoadingMessage] = useState('Waiting for opponent...');
   
-  const handleStartGame = () => {
-    // Start the game with a larger grid size
-    startGame(30, 30);
-    setGameStarted(true);
+  useEffect(() => {
+    // Listen for queue status updates
+    socket.on('queue-status', (data) => {
+      setLoadingMessage(data.message);
+    });
+
+    // Listen for match found
+    socket.on('match-found', (data) => {
+      setLoadingMessage(data.message);
+    });
+
+    // Listen for game started
+    socket.on('game-started', () => {
+      setCurrentState('playing');
+      setGameStarted(true);
+    });
+
+    return () => {
+      socket.off('queue-status');
+      socket.off('match-found');
+      socket.off('game-started');
+    };
+  }, []);
+  
+  const handleStartGame = (playerName: string) => {
+    setCurrentState('matchmaking');
+    startGame(30, 30, playerName);
   };
   
   if (!gameStarted) {
+    if (currentState === 'matchmaking') {
+      return <LoadingScreen message={loadingMessage} />;
+    }
     return <StartScreen onStart={handleStartGame} />;
   }
   

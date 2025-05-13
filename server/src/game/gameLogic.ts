@@ -165,7 +165,11 @@ export const createNewGame = (
     winner: null,
     selectedTile: null,
     movementQueue: [],
-    minGarrison: MIN_GARRISON
+    minGarrison: MIN_GARRISON,
+    playerId: "",
+    playerName: "",
+    player2Id: "",
+    player2Name: ""
   };
 };
 

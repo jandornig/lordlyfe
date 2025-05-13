@@ -4,7 +4,7 @@ import { GameState, Tile, Owner, Movement, TickSpeed, Path, PathStep, Territory 
 export const GAME_VERSION = '0.1.1.28';
 
 const DEFAULT_MAP_SIZE = 30;
-const LORD_GROWTH_RATE = 1;
+const LORD_GROWTH_RATE = 2;
 const CITY_GROWTH_RATE = 1;
 const MIN_GARRISON = 1;
 const DEFAULT_TERRITORY_COUNT = 8; // Number of territories to generate
@@ -56,13 +56,43 @@ export const createNewGame = (
   // Create territories using a Voronoi-like approach
   const territories = createTerritories(tiles, width, height, territoryCount);
   
-  // Add mountains (10% of tiles)
-  const mountainCount = Math.floor(width * height * 0.1);
+  // Identify territory border tiles
+  const borderTiles: number[] = [];
+  for (let i = 0; i < tiles.length; i++) {
+    const tile = tiles[i];
+    if (tile.isMountain) continue;
+    
+    const neighbors = [
+      tiles.find(t => t.x === tile.x - 1 && t.y === tile.y),
+      tiles.find(t => t.x === tile.x + 1 && t.y === tile.y),
+      tiles.find(t => t.x === tile.x && t.y === tile.y - 1),
+      tiles.find(t => t.x === tile.x && t.y === tile.y + 1)
+    ].filter(Boolean);
+    
+    if (neighbors.some(neighbor => neighbor?.territory !== tile.territory)) {
+      borderTiles.push(i);
+    }
+  }
+  
+  // Add mountains (15% of tiles, with higher chance on borders)
+  const mountainCount = Math.floor(width * height * 0.15);
   for (let i = 0; i < mountainCount; i++) {
-    const randomIndex = getRandomInt(0, tiles.length - 1);
+    let randomIndex: number;
+    // 55% chance to place mountain on border if there are border tiles available
+    if (borderTiles.length > 0 && Math.random() < 0.55) {
+      randomIndex = borderTiles[getRandomInt(0, borderTiles.length - 1)];
+    } else {
+      randomIndex = getRandomInt(0, tiles.length - 1);
+    }
+    
     // Ensure we don't already have a mountain here
     if (!tiles[randomIndex].isMountain) {
       tiles[randomIndex].isMountain = true;
+      // Remove from border tiles if it was there
+      const borderIndex = borderTiles.indexOf(randomIndex);
+      if (borderIndex !== -1) {
+        borderTiles.splice(borderIndex, 1);
+      }
     } else {
       // Try again if this tile already has a mountain
       i--;
@@ -197,7 +227,7 @@ export const createTerritories = (tiles: Tile[], width: number, height: number, 
   for (let i = 0; i < territoryCount; i++) {
     const territoryTiles = tiles.filter(t => 
       t.territory === i && 
-      !t.isMountain && 
+      !t.isMountain && // Explicitly check for mountains
       !t.isCity && 
       !t.isLord && // Don't place on existing lord tiles
       t.owner === null // Don't place on player or AI tiles
@@ -205,12 +235,16 @@ export const createTerritories = (tiles: Tile[], width: number, height: number, 
     
     if (territoryTiles.length === 0) {
       // If no valid tiles found, try to find any non-mountain tile in the territory
-      const fallbackTiles = tiles.filter(t => t.territory === i && !t.isMountain);
+      const fallbackTiles = tiles.filter(t => 
+        t.territory === i && 
+        !t.isMountain && // Explicitly check for mountains
+        !t.isLord && 
+        t.owner === null
+      );
       if (fallbackTiles.length === 0) continue;
       
-      // Find the first non-lord tile (can be a city)
-      const fallbackTile = fallbackTiles.find(t => !t.isLord);
-      if (!fallbackTile) continue;
+      // Take the first available tile
+      const fallbackTile = fallbackTiles[0];
       
       // Make this tile a lord tile
       fallbackTile.isLord = true;

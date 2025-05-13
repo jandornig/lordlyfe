@@ -204,9 +204,6 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         if (success) {
           console.log('Movement request sent successfully');
           selectTile(null);
-          
-          // Show supply line button at the endpoint
-          showSupplyLineButton(tile);
         } else {
           console.log('Movement request failed');
         }
@@ -227,9 +224,6 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         selectTile(null);
       }
     }
-    
-    // Hide supply line button on any click
-    hideSupplyLineButton();
   };
 
   // Track mouse down position
@@ -438,7 +432,7 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         ${!tile.owner && tile.isCity && !tile.isMountain ? 'bg-city bg-opacity-30' : ''}
         ${!tile.owner && !tile.isCity && !tile.isMountain ? 'bg-neutral bg-opacity-20' : ''}
         ${canSelect ? 'ring-2 ring-highlight cursor-pointer' : ''} 
-        ${selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y ? 'ring-2 ring-white' : ''}
+        ${selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y ? 'ring-2 ring-yellow-400' : ''}
         ${isTerritoryBorder ? 'border border-gray-500' : ''}
         ${isWaypoint ? 'ring-2 ring-yellow-400' : ''}
         transition-all duration-150 hover:opacity-90
@@ -477,11 +471,6 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
             }`} 
           />
         </div>
-      )}
-      
-      {/* Supply Line Button */}
-      {getCurrentSupplyLineButton()?.x === tile.x && getCurrentSupplyLineButton()?.y === tile.y && (
-        <SupplyLineButton x={tile.x} y={tile.y} />
       )}
       
       {/* City indicator */}

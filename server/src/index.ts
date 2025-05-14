@@ -1,66 +1,115 @@
 import express from 'express';
-import { createServer } from 'http';
+import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { gameStateManager } from './game/gameState';
 import { createPathMovements } from './game/gameLogic';
 import { matchmakingQueue } from './game/matchmaking';
 import { Tile } from './types/game';
+import { v4 as uuidv4 } from 'uuid';
 
 const app = express();
-const httpServer = createServer(app);
-export const io = new Server(httpServer, {
+const server = http.createServer(app);
+export const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // Vite's default port
-    methods: ["GET", "POST"]
+    origin: "*", // Allow all origins for simplicity in development
   }
 });
 
-// Middleware
-app.use(cors({
-  origin: 'http://localhost:5173', // Allow requests from Vite dev server
-  methods: ['GET', 'POST'],
-  credentials: true
-}));
-app.use(express.json());
+app.use(cors()); // Enable CORS for all routes
 
-// Basic route for testing
-app.get('/', (req, res) => {
-  res.send('Lordlyfe Game Server is running');
-});
+const PORT = process.env.PORT || 3000;
+
+// Simple in-memory mapping for socket.id to playerId
+const socketPlayerMap = new Map<string, string>();
+
+// Tick loop (placeholder, can be expanded)
+let tickCount = 0;
+const TICK_INTERVAL = 1000; // 1 second
+
+setInterval(() => {
+  tickCount++;
+  // console.log('Tick:', tickCount);
+  // Broadcast tick or game state updates here if needed globally
+}, TICK_INTERVAL);
+
+console.log('Starting tick loop with speed:', TICK_INTERVAL);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-  const clientId = socket.handshake.auth.clientId;
-  console.log('Client connected:', clientId);
+  // const clientId = socket.handshake.auth.clientId; // Keep for potential future use if needed
+  console.log('Client connected with socket ID:', socket.id);
+
+  // Generate and assign playerId
+  const playerId = uuidv4();
+  socketPlayerMap.set(socket.id, playerId);
+  socket.emit('player-id-assigned', { playerId });
+  console.log(`Assigned playerId ${playerId} to socket ${socket.id}`);
 
   // Handle player connection
-  socket.on('player-connect', (data: { playerId: string, playerName: string }) => {
-    // Only log the first connection for each player
-    if (!socket.data.hasConnected) {
-      console.log('Player connected:', {
-        playerId: data.playerId,
-        playerName: data.playerName
+  // Client will send playerName, server already knows playerId
+  socket.on('player-connect', (data: { playerName: string }) => {
+    const currentSocketId = socket.id;
+    const assignedPlayerId = socketPlayerMap.get(currentSocketId);
+
+    if (!assignedPlayerId) {
+      console.error(`Player ID not found for socket ${currentSocketId}. This should not happen.`);
+      // Potentially disconnect or send an error to the client
+      return;
+    }
+    
+    // Only log the first connection for each player (or if specific connect data changes)
+    // The socket.data.hasConnected logic might need adjustment if we rely on this event for more than initial name.
+    if (!socket.data.hasConnectedWithName) { // Changed condition to be more specific
+      console.log('Player announced:', {
+        playerId: assignedPlayerId,
+        playerName: data.playerName,
+        socketId: currentSocketId
       });
-      socket.data.hasConnected = true;
+      socket.data.hasConnectedWithName = true;
     }
   });
 
   // Handle disconnection
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', clientId);
-    matchmakingQueue.removePlayer(socket.id);
+    const disconnectedPlayerId = socketPlayerMap.get(socket.id);
+    console.log(`Client disconnected: socket ${socket.id}, player ${disconnectedPlayerId || 'N/A'}`);
+    matchmakingQueue.removePlayer(socket.id); // matchmakingQueue uses socketId for removal
+    socketPlayerMap.delete(socket.id); // Clean up map
   });
 
   // Handle game start
-  socket.on('start-game', (data: { width?: number, height?: number, playerId: string, playerName: string }) => {
-    console.log('Player starting game:', data);
+  // Client sends playerName. Server uses its mapped playerId.
+  socket.on('start-game', (data: { width?: number, height?: number, playerName: string }) => {
+    const currentSocketId = socket.id;
+    const assignedPlayerId = socketPlayerMap.get(currentSocketId);
+
+    if (!assignedPlayerId) {
+      console.error(`Player ID not found for socket ${currentSocketId} during start-game. This should not happen.`);
+      // Potentially disconnect or send an error to the client
+      return;
+    }
+
+    console.log('Player starting game:', {
+      playerId: assignedPlayerId, // Use server-assigned playerId
+      playerName: data.playerName,
+      socketId: currentSocketId,
+      width: data.width,
+      height: data.height
+    });
     // Add player to matchmaking queue
     matchmakingQueue.addPlayer({
-      playerId: data.playerId,
+      playerId: assignedPlayerId, // Use server-assigned playerId
       playerName: data.playerName,
-      socketId: socket.id
+      socketId: currentSocketId
     });
+  });
+
+  // Placeholder for other game-specific events
+  socket.on('game-action', (data) => {
+    const actionPlayerId = socketPlayerMap.get(socket.id);
+    console.log(`Game action from player ${actionPlayerId}:`, data);
+    // Handle game action
   });
 
   // Handle movement requests
@@ -170,8 +219,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 }); 

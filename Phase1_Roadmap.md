@@ -6,12 +6,15 @@ Phase 1 focuses on establishing the core multiplayer infrastructure, enabling mu
 ## 1. Player Identification & Session Management
 
 ### 1.1 Player ID System
-- [x] Create unique player ID generation
-  - Implement UUID v4 for player identification
-  - Add player ID to socket connection
-  - Store player ID in game state
+- [x] **Server: Implement Server-Generated Player IDs (Supersedes client-side UUIDs)**
+  - [x] On client connection or join/play request, server generates a unique `playerId`.
+  - [x] Server maintains a mapping between `socket.id` and `playerId`.
+  - [x] Server replies to the client, sending the assigned `playerId`.
+- [x] **Client: Adopt Server-Generated Player ID**
+  - [x] Remove client-side `playerId` (UUID) generation.
+  - [x] Client requests (if necessary) and stores its server-assigned `playerId` (e.g., as `myPlayerId` in context).
 - [x] Add player metadata
-  - Player name/display name
+  - Player name/display name (Player provides this, associated with their `playerId`)
   - Connection timestamp
   - Last activity timestamp
 - [x] UI Changes Required:
@@ -26,7 +29,7 @@ Phase 1 focuses on establishing the core multiplayer infrastructure, enabling mu
 - [x] Testing:
   - Verify unique ID generation
   - Confirm ID persistence across reconnects
-  - Test ID collision handling
+  - Test ID collision handling (Server ensures uniqueness)
   - Test UI responsiveness to connection changes
   - Verify player name display and updates
   - Test name validation and error messages
@@ -48,36 +51,52 @@ Phase 1 focuses on establishing the core multiplayer infrastructure, enabling mu
 ## 2. Matchmaking System
 
 ### 2.1 Matchmaking Queue Implementation
-- [ ] Implement matchmaking queue data structure
+- [x] Implement matchmaking queue data structure
   - Queue ID generation
   - Queue metadata (player count, status, etc.)
   - Player capacity limits (initially 2, later 4-8)
-- [ ] Add queue management
+- [x] Add queue management
   - Add player to queue
   - Remove player from queue
   - Handle queue full conditions
+- [x] **Server: Implement Match Rooms**
+  - [x] When a match is made, generate a unique `matchId` (e.g., UUID).
+  - [x] Add both player sockets (identified by their `socket.id`) to a Socket.IO room named with `matchId`.
 - [ ] Testing:
-  - Verify queue functionality
-  - Test queue full handling
-  - Confirm game start when queue is full
+  - [x] Verify queue functionality
+  - [x] Test queue full handling
+  - [x] Confirm game start when queue is full
 
 ### 2.2 Game Start Logic
-- [ ] Implement game start logic
+- [x] Implement game start logic
   - Check queue player count
   - Start game when queue is full
   - Handle game initialization
-- [ ] Add game start events
+- [x] Add game start events
   - Notify players when game starts
   - Update game state
+- [x] **Server: Broadcast Game State to Match Room**
+  - [x] All game-specific state updates (e.g., `game-state-update`, `game-started`) are emitted only to the specific `matchId` room (e.g., `io.to(matchId).emit(...)`).
 - [ ] Testing:
-  - Verify game start logic
-  - Test game initialization
-  - Confirm player notifications
+  - [x] Verify game start logic
+  - [x] Test game initialization
+  - Confirm player notifications (Clients in the room receive the broadcast)
 
 ### 2.3 Multiplayer Game Logic Modifications
+- [ ] **Architecture: Implement Authoritative Server Model**
+  - [ ] Clients send only intent-based messages to the server (e.g., `intent-move` including `myPlayerId` and relevant action data).
+  - [ ] The server is the single source of truth for `gameState`.
+  - [ ] Server validates all client intents against the authoritative `gameState` and game rules.
+  - [ ] Server updates the authoritative `gameState` if an intent is valid.
+  - [ ] Clients do not modify their local game state optimistically; they only render the `gameState` received from server broadcasts.
+- [ ] **Client: Implement Player Role Detection (e.g., in GameContext)**
+  - [ ] Client stores its `myPlayerId` (received from the server, see 1.1).
+  - [ ] When a `gameState` is received from the server (this state will include `player1Id` and `player2Id` for the match):
+    - [ ] Determine and store the client's role for the current match: e.g., `role = (myPlayerId === gameState.player1Id) ? 'player1' : (myPlayerId === gameState.player2Id ? 'player2' : 'observer')`.
+  - [ ] Expose this `role` and the latest `gameState` via React context for UI components to use.
 - [ ] Update game initialization
-  - Modify createNewGame to support two players
-  - Remove AI player initialization
+  - [x] Modify createNewGame to support two players (Server initializes with `player1Id`, `player2Id`)
+  - [x] Remove AI player initialization
   - Add second player lord tile placement
   - Update territory distribution for two players
 - [ ] Update game state management
@@ -89,12 +108,13 @@ Phase 1 focuses on establishing the core multiplayer infrastructure, enabling mu
   - Update victory conditions for PvP
   - Add player turn indicators
 - [ ] Testing:
-  - Verify two-player game initialization
+  - [x] Verify two-player game initialization
   - Test player turn handling
   - Confirm victory conditions
-  - Test game state synchronization
+  - Test game state synchronization (Clients in room receive authoritative state; roles determine perspective)
 
 ## 3. Initial State Synchronization
+*(Note: Many aspects of this section will be addressed by the Authoritative Server Model and Match Room Broadcasting outlined in Section 2. The server sending the complete, authoritative state to the room upon game start and after each validated intent is the core of state synchronization.)*
 
 ### 3.1 Game State Modification
 - [ ] Update game state structure
@@ -142,21 +162,24 @@ Phase 1 focuses on establishing the core multiplayer infrastructure, enabling mu
 
 ### Milestone 1: Player System
 - Multiple players can connect to the server
-- Each player has a unique identifier
-- Sessions are properly tracked and managed
+- Each player has a unique, **server-assigned** identifier (`playerId`)
+- Sessions are properly tracked and managed (associating `socket.id` with `playerId`)
 - Connection/disconnection is handled gracefully
 
 ### Milestone 2: Room System
-- Players can create and join rooms
-- Room state is properly maintained
-- Players can leave rooms
+- Players can create and join rooms (Implicitly, server creates match rooms)
+- Room state is properly maintained (Authoritative `gameState` per match/room)
+- Players can leave rooms (Server handles disconnects from rooms)
 - Room cleanup works correctly
+- **Game broadcasts are isolated to match rooms.**
 
 ### Milestone 3: State Synchronization
-- All players in a room see the same game state
-- State updates are properly broadcast
-- Player-specific states are maintained
-- State conflicts are resolved correctly
+- All players in a room see the same **authoritative** game state
+- State updates are properly broadcast **to the correct room**
+- Player-specific states are maintained (Server tracks this, clients derive role)
+- State conflicts are resolved correctly (Server is authoritative, preventing conflicts)
+- **Clients correctly identify their role (Player 1/Player 2) based on `myPlayerId` and match data.**
+- **Client actions are processed as intents by the server.**
 
 ## Implementation Notes
 

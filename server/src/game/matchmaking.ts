@@ -1,5 +1,6 @@
 import { io } from '../index';
 import { gameStateManager } from './gameState';
+import { v4 as uuidv4 } from 'uuid';
 
 interface QueuedPlayer {
   playerId: string;
@@ -38,23 +39,35 @@ class MatchmakingQueue {
       const player1 = this.queue.shift()!;
       const player2 = this.queue.shift()!;
 
-      console.log('Match found:', { player1, player2 });
+      const matchId = uuidv4();
+      console.log(`Match found: ${matchId}`, { player1, player2 });
 
-      // Notify both players that match is found
-      io.to(player1.socketId).emit('match-found', { 
-        status: 'found',
-        message: 'Match found! Starting game...'
-      });
-      io.to(player2.socketId).emit('match-found', { 
-        status: 'found',
-        message: 'Match found! Starting game...'
-      });
+      // Have players join the room
+      const socket1 = io.sockets.sockets.get(player1.socketId);
+      const socket2 = io.sockets.sockets.get(player2.socketId);
 
-      // Wait for minimum wait time
-      await new Promise(resolve => setTimeout(resolve, this.MIN_WAIT_TIME));
+      if (socket1) {
+        socket1.join(matchId);
+        console.log(`Player ${player1.playerId} (socket ${player1.socketId}) joined match room ${matchId}`);
+      } else {
+        console.error(`Socket not found for player ${player1.playerId}`);
+        if (player2) this.queue.unshift(player2);
+        return;
+      }
 
-      // Start the game with both players
+      if (socket2) {
+        socket2.join(matchId);
+        console.log(`Player ${player2.playerId} (socket ${player2.socketId}) joined match room ${matchId}`);
+      } else {
+        console.error(`Socket not found for player ${player2.playerId}`);
+        socket1.leave(matchId);
+        this.queue.unshift(player1);
+        return;
+      }
+
+      // Start the game with both players, including matchId
       const gameState = gameStateManager.initializeGame(
+        matchId,
         30, 
         30, 
         player1.playerId, 
@@ -63,9 +76,10 @@ class MatchmakingQueue {
         player2.playerName
       );
       
-      // Notify both players that game is starting
-      io.to(player1.socketId).emit('game-started', gameState);
-      io.to(player2.socketId).emit('game-started', gameState);
+      // Notify both players that game is starting (SHOULD NOW BE SENT TO ROOM)
+      // This will be handled by gameStateManager.initializeGame broadcasting to the room
+      // io.to(player1.socketId).emit('game-started', gameState);
+      // io.to(player2.socketId).emit('game-started', gameState);
     }
   }
 }

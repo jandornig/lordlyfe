@@ -62,7 +62,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
             <span>Capture the enemy lord to win the game.</span>
           </li>
         </ul>
-
+        
         <div className="space-y-4">
           <div>
             <Input
@@ -86,8 +86,8 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
             className="w-full"
             disabled={!!error}
           >
-            Start Game
-          </Button>
+          Start Game
+        </Button>
         </div>
       </div>
     </div>

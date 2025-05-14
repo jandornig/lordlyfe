@@ -139,7 +139,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     const playerId = crypto.randomUUID();
     
     // Update game state with player info
-    dispatch({
+    dispatch({ 
       type: 'SET_GAME_STATE',
       payload: {
         ...gameState,
@@ -147,7 +147,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         playerName: playerName || gameState.playerName
       }
     });
-
+    
     // Emit start game event
     socket.emit('start-game', {
       width,

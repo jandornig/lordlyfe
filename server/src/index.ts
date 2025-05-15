@@ -22,18 +22,8 @@ const PORT = process.env.PORT || 3000;
 
 // Simple in-memory mapping for socket.id to playerId
 const socketPlayerMap = new Map<string, string>();
-
-// Tick loop (placeholder, can be expanded)
-let tickCount = 0;
-const TICK_INTERVAL = 1000; // 1 second
-
-setInterval(() => {
-  tickCount++;
-  // console.log('Tick:', tickCount);
-  // Broadcast tick or game state updates here if needed globally
-}, TICK_INTERVAL);
-
-console.log('Starting tick loop with speed:', TICK_INTERVAL);
+// New: mapping for socket.id to matchId
+const socketMatchMap = new Map<string, string>();
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -70,12 +60,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Listen for joining a match room (set by matchmaking)
+  socket.on('join-match-room', (data: { matchId: string }) => {
+    socketMatchMap.set(socket.id, data.matchId);
+    console.log(`Socket ${socket.id} joined match room ${data.matchId}`);
+  });
+
   // Handle disconnection
   socket.on('disconnect', () => {
     const disconnectedPlayerId = socketPlayerMap.get(socket.id);
-    console.log(`Client disconnected: socket ${socket.id}, player ${disconnectedPlayerId || 'N/A'}`);
-    matchmakingQueue.removePlayer(socket.id); // matchmakingQueue uses socketId for removal
-    socketPlayerMap.delete(socket.id); // Clean up map
+    const matchId = socketMatchMap.get(socket.id);
+    console.log(`Client disconnected: socket ${socket.id}, player ${disconnectedPlayerId || 'N/A'}, match ${matchId || 'N/A'}`);
+    matchmakingQueue.removePlayer(socket.id);
+    socketPlayerMap.delete(socket.id);
+    socketMatchMap.delete(socket.id);
   });
 
   // Handle game start
@@ -114,6 +112,18 @@ io.on('connection', (socket) => {
 
   // Handle movement requests
   socket.on('move-army', (data: { movements: any[] }) => {
+    const matchId = socketMatchMap.get(socket.id);
+    const actingPlayerId = socketPlayerMap.get(socket.id);
+    if (!matchId || !actingPlayerId) {
+      console.warn(`move-army: Could not find match or player for socket ${socket.id}`);
+      return;
+    }
+    // Validate that actingPlayerId is in the match (basic check)
+    const gameState = gameStateManager.getGameState();
+    if (gameState.playerId !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
+      console.warn(`move-army: Player ${actingPlayerId} is not in match ${matchId}`);
+      return;
+    }
     console.log('=== Click Event ===');
     console.log('Click data:', {
       movements: data.movements.map(m => ({
@@ -125,8 +135,6 @@ io.on('connection', (socket) => {
     });
 
     try {
-      const gameState = gameStateManager.getGameState();
-      
       // Process each movement
       for (const movement of data.movements) {
         const fromTile = gameState.tiles.find((t: Tile) => t.x === movement.from.x && t.y === movement.from.y);
@@ -183,9 +191,9 @@ io.on('connection', (socket) => {
       // Update game state
       gameStateManager.updateGameState(gameState);
       
-      // Broadcast the updated state to all clients
-      io.emit('game-state-update', gameStateManager.getGameState());
-      console.log('=== End Click Event ===');
+      // Broadcast the updated state to the match room only
+      io.to(matchId).emit('game-state-update', gameStateManager.getGameState());
+      console.log(`[move-army] Updated and broadcasted game state for match ${matchId}`);
     } catch (error) {
       console.error('Error processing click:', error);
     }
@@ -193,22 +201,38 @@ io.on('connection', (socket) => {
 
   // Handle tick speed changes
   socket.on('set-tick-speed', (data: { speed: number }) => {
-    console.log('Setting tick speed:', data.speed);
+    const matchId = socketMatchMap.get(socket.id);
+    const actingPlayerId = socketPlayerMap.get(socket.id);
+    if (!matchId || !actingPlayerId) {
+      console.warn(`set-tick-speed: Could not find match or player for socket ${socket.id}`);
+      return;
+    }
+    const gameState = gameStateManager.getGameState();
+    if (gameState.playerId !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
+      console.warn(`set-tick-speed: Player ${actingPlayerId} is not in match ${matchId}`);
+      return;
+    }
     gameStateManager.setTickSpeed(data.speed);
-    io.emit('game-state-update', gameStateManager.getGameState());
+    io.to(matchId).emit('game-state-update', gameStateManager.getGameState());
+    console.log(`[set-tick-speed] Updated and broadcasted game state for match ${matchId}`);
   });
 
   // Handle pause toggle
   socket.on('toggle-pause', () => {
-    console.log('Toggling pause');
+    const matchId = socketMatchMap.get(socket.id);
+    const actingPlayerId = socketPlayerMap.get(socket.id);
+    if (!matchId || !actingPlayerId) {
+      console.warn(`toggle-pause: Could not find match or player for socket ${socket.id}`);
+      return;
+    }
+    const gameState = gameStateManager.getGameState();
+    if (gameState.playerId !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
+      console.warn(`toggle-pause: Player ${actingPlayerId} is not in match ${matchId}`);
+      return;
+    }
     gameStateManager.togglePause();
-    const currentState = gameStateManager.getGameState();
-    console.log('Game state after pause toggle:', {
-      isPaused: currentState.isPaused,
-      tick: currentState.tick,
-      tickSpeed: currentState.tickSpeed
-    });
-    io.emit('game-state-update', currentState);
+    io.to(matchId).emit('game-state-update', gameStateManager.getGameState());
+    console.log(`[toggle-pause] Updated and broadcasted game state for match ${matchId}`);
   });
 
   // Handle clear movement queue

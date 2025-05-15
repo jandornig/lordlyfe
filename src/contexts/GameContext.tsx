@@ -1,73 +1,40 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { GameState, Tile, TickSpeed, Movement } from '../types/game';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, ReactNode } from 'react';
 import { socket } from '../services/socket';
-import { v4 as uuidv4 } from 'uuid';
+import { GameState, Tile, Movement, TickSpeed } from '../types/game';
 
-// Define the shape of the context
+console.log("GameContext.tsx loaded");
+
+export type PlayerRole = 'player1' | 'player2' | 'observer' | null;
+
 interface GameContextType {
   gameState: GameState;
+  myPlayerId: string | null;
+  playerRole: PlayerRole;
+  waypoints: { x: number, y: number }[];
+  setWaypoints: React.Dispatch<React.SetStateAction<{ x: number, y: number }[]>>;
   startGame: (width?: number, height?: number, playerName?: string) => void;
   restartGame: () => void;
   selectTile: (tile: Tile | null) => void;
   moveArmy: (movements: Movement[]) => void;
   setTickSpeed: (speed: TickSpeed) => void;
   togglePause: () => void;
-  waypoints: { x: number, y: number }[];
-  setWaypoints: (waypoints: { x: number, y: number }[]) => void;
+  setPlayerName: (name: string) => void;
 }
 
-// Create the context
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
-// Define action types for the reducer
-type GameAction =
-  | { type: 'SET_GAME_STATE'; payload: GameState }
-  | { type: 'SELECT_TILE'; payload: { tile: Tile | null } }
-  | { type: 'SET_TICK_SPEED'; payload: { speed: TickSpeed } }
-  | { type: 'TOGGLE_PAUSE' }
-  | { type: 'SET_PLAYER_NAME'; payload: { playerName: string } };
-
-// Define the reducer function
-const gameReducer = (state: GameState, action: GameAction): GameState => {
-  switch (action.type) {
-    case 'SET_GAME_STATE':
-      return action.payload;
-
-    case 'SELECT_TILE':
-      return {
-        ...state,
-        selectedTile: action.payload.tile,
-      };
-
-    case 'SET_TICK_SPEED':
-      return {
-        ...state,
-        tickSpeed: action.payload.speed,
-      };
-
-    case 'TOGGLE_PAUSE':
-      return {
-        ...state,
-        isPaused: !state.isPaused,
-      };
-
-    case 'SET_PLAYER_NAME':
-      return {
-        ...state,
-        playerName: action.payload.playerName,
-      };
-
-    default:
-      return state;
+export const useGame = () => {
+  const context = useContext(GameContext);
+  if (!context) {
+    throw new Error('useGame must be used within a GameProvider');
   }
+  return context;
 };
 
 interface GameProviderProps {
   children: ReactNode;
 }
 
-// Create the provider component
-export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const initialState: GameState = {
     tiles: [],
     territories: [],
@@ -80,29 +47,66 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     height: 20,
     isGameOver: false,
     movementQueue: [],
-    playerId: uuidv4(),
+  playerId: '',
     playerName: ''
   };
   
+type Action =
+  | { type: 'SET_GAME_STATE', payload: Partial<GameState> }
+  | { type: 'SELECT_TILE', payload: { tile: Tile | null } }
+  | { type: 'MOVE_ARMY', payload: { movements: Movement[] } }
+  | { type: 'SET_TICK_SPEED', payload: { speed: TickSpeed } }
+  | { type: 'TOGGLE_PAUSE' }
+  | { type: 'SET_PLAYER_ID', payload: { playerId: string } }
+  | { type: 'SET_PLAYER_NAME', payload: { playerName: string } };
+
+const gameReducer = (state: GameState, action: Action): GameState => {
+  switch (action.type) {
+    case 'SET_GAME_STATE':
+      return { ...state, ...action.payload };
+    case 'SELECT_TILE':
+      return { ...state, selectedTile: action.payload.tile };
+    case 'MOVE_ARMY':
+      return state;
+    case 'SET_TICK_SPEED':
+      return { ...state, tickSpeed: action.payload.speed, isPaused: false };
+    case 'TOGGLE_PAUSE':
+      return { ...state, isPaused: !state.isPaused };
+    case 'SET_PLAYER_ID':
+      return { ...state, playerId: action.payload.playerId };
+    case 'SET_PLAYER_NAME':
+      return { ...state, playerName: action.payload.playerName };
+    default:
+      return state;
+  }
+};
+
+export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [gameState, dispatch] = useReducer(gameReducer, initialState);
-  const [waypoints, setWaypoints] = React.useState<{ x: number, y: number }[]>([]);
+  const [waypoints, setWaypoints] = useState<{ x: number, y: number }[]>([]);
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
+  const [playerRole, setPlayerRole] = useState<PlayerRole>(null);
   
-  // Set up socket connection with player ID
   useEffect(() => {
-    socket.emit('player-connect', { 
-      playerId: gameState.playerId,
-      playerName: gameState.playerName 
-    });
-
-    return () => {
-      socket.emit('player-disconnect', { playerId: gameState.playerId });
+    const handlePlayerIdAssigned = (data: { playerId: string }) => {
+      console.log('Player ID assigned by server:', data.playerId);
+      setMyPlayerId(data.playerId);
     };
-  }, [gameState.playerId, gameState.playerName]);
+    socket.on('player-id-assigned', handlePlayerIdAssigned);
+    return () => {
+      socket.off('player-id-assigned', handlePlayerIdAssigned);
+    };
+  }, []);
 
-  // Listen for game state updates from server
-  React.useEffect(() => {
+  useEffect(() => {
+    if (myPlayerId && gameState.playerName) {
+      socket.emit('player-connect', { playerName: gameState.playerName });
+      console.log('Emitted player-connect with playerName:', gameState.playerName);
+    }
+  }, [myPlayerId, gameState.playerName]);
+
+  useEffect(() => {
     const handleGameStateUpdate = (newState: GameState) => {
-      // Preserve the selected tile when updating state
       const currentSelectedTile = gameState.selectedTile;
       dispatch({ 
         type: 'SET_GAME_STATE', 
@@ -111,113 +115,98 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           selectedTile: currentSelectedTile
         }
       });
+      if (myPlayerId) {
+        let role: PlayerRole = 'observer';
+        if (myPlayerId === newState.playerId) {
+          role = 'player1';
+        } else if (myPlayerId === (newState as any).player2Id) {
+          role = 'player2';
+        }
+        setPlayerRole(role);
+        console.log('[GameContext] Game state update received. myPlayerId:', myPlayerId, 'playerId:', newState.playerId, 'player2Id:', (newState as any).player2Id, '=> role:', role);
+      } else {
+        setPlayerRole(null);
+        console.log('[GameContext] Game state update received, but myPlayerId is not set yet.');
+      }
     };
-
     socket.on('game-state-update', handleGameStateUpdate);
     socket.on('game-started', handleGameStateUpdate);
-    
     return () => {
       socket.off('game-state-update', handleGameStateUpdate);
       socket.off('game-started', handleGameStateUpdate);
     };
-  }, [gameState.selectedTile]); // Add selectedTile to dependencies
-  
-  // Game actions
-  const startGame = useCallback((width?: number, height?: number, playerName?: string) => {
-    if (playerName) {
-      dispatch({ 
-        type: 'SET_PLAYER_NAME', 
-        payload: { playerName } 
-      });
-      // Update socket connection with new player name
-      socket.emit('player-connect', { 
-        playerId: gameState.playerId,
-        playerName 
-      });
+  }, [gameState.selectedTile, myPlayerId]);
+
+  const setPlayerNameCB = useCallback((name: string) => {
+    dispatch({ type: 'SET_PLAYER_NAME', payload: { playerName: name } });
+  }, []);
+
+  const startGame = useCallback((width?: number, height?: number, playerNameInput?: string) => {
+    if (!myPlayerId) {
+      console.error("Cannot start game: Player ID not yet assigned by server.");
+      return;
     }
-    // Generate a new unique player ID
-    const playerId = crypto.randomUUID();
-    
-    // Update game state with player info
-    dispatch({ 
-      type: 'SET_GAME_STATE',
-      payload: {
-        ...gameState,
-        playerId,
-        playerName: playerName || gameState.playerName
-      }
-    });
-    
-    // Emit start game event
+    if (playerNameInput) {
+      dispatch({ type: 'SET_PLAYER_NAME', payload: { playerName: playerNameInput } });
+    } else if (!gameState.playerName) {
+      console.error("Cannot start game: Player name is not set.");
+      return;
+    }
+    console.log(`[GameContext] Emitting start-game for player: ${myPlayerId} with name: ${playerNameInput || gameState.playerName}`);
     socket.emit('start-game', {
       width,
       height,
-      playerId,
-      playerName: playerName || gameState.playerName
+      playerName: playerNameInput || gameState.playerName
     });
-  }, [gameState.playerId, gameState.playerName]);
+  }, [myPlayerId, gameState.playerName]);
   
   const restartGame = useCallback(() => {
-    startGame(gameState.width, gameState.height);
-  }, [gameState.width, gameState.height, startGame]);
+    startGame(gameState.width, gameState.height, gameState.playerName);
+  }, [gameState.width, gameState.height, gameState.playerName, startGame]);
   
   const selectTile = useCallback((tile: Tile | null) => {
-    dispatch({ 
-      type: 'SELECT_TILE', 
-      payload: { tile } 
-    });
+    dispatch({ type: 'SELECT_TILE', payload: { tile } });
     if (!tile) {
       setWaypoints([]);
     }
   }, []);
   
   const moveArmy = useCallback((movements: Movement[]) => {
+    if (!myPlayerId) {
+      console.error("Cannot move army: Player ID not known.");
+      return;
+    }
+    console.log(`[GameContext] Client ${myPlayerId} sending move-army intent:`, movements);
     socket.emit('move-army', { movements });
     setWaypoints([]);
-  }, []);
+  }, [myPlayerId]);
   
-  const setTickSpeed = useCallback((speed: TickSpeed) => {
+  const setTickSpeedCB = useCallback((speed: TickSpeed) => {
     socket.emit('set-tick-speed', { speed });
-    dispatch({
-      type: 'SET_TICK_SPEED',
-      payload: { speed }
-    });
+    dispatch({ type: 'SET_TICK_SPEED', payload: { speed } });
   }, []);
   
-  const togglePause = useCallback(() => {
-    console.log('Client: Toggling pause, current state:', {
-      isPaused: gameState.isPaused,
-      tick: gameState.tick,
-      tickSpeed: gameState.tickSpeed
-    });
+  const togglePauseCB = useCallback(() => {
     socket.emit('toggle-pause');
     dispatch({ type: 'TOGGLE_PAUSE' });
-  }, [gameState.isPaused, gameState.tick, gameState.tickSpeed]);
+  }, []);
   
   return (
-    <GameContext.Provider
-      value={{
+    <GameContext.Provider value={{
         gameState,
+      myPlayerId,
+      playerRole,
+      waypoints,
+      setWaypoints,
         startGame,
         restartGame,
         selectTile,
         moveArmy,
-        setTickSpeed,
-        togglePause,
-        waypoints,
-        setWaypoints
-      }}
-    >
+      setTickSpeed: setTickSpeedCB,
+      togglePause: togglePauseCB,
+      setPlayerName: setPlayerNameCB
+    }}>
       {children}
     </GameContext.Provider>
   );
-};
-
-// Custom hook for using the game context
-export const useGame = (): GameContextType => {
-  const context = useContext(GameContext);
-  if (context === undefined) {
-    throw new Error('useGame must be used within a GameProvider');
-  }
-  return context;
 };

@@ -83,17 +83,17 @@ Phase 1 focuses on establishing the core multiplayer infrastructure, enabling mu
   - Confirm player notifications (Clients in the room receive the broadcast)
 
 ### 2.3 Multiplayer Game Logic Modifications
-- [ ] **Architecture: Implement Authoritative Server Model**
-  - [ ] Clients send only intent-based messages to the server (e.g., `intent-move` including `myPlayerId` and relevant action data).
-  - [ ] The server is the single source of truth for `gameState`.
-  - [ ] Server validates all client intents against the authoritative `gameState` and game rules.
-  - [ ] Server updates the authoritative `gameState` if an intent is valid.
-  - [ ] Clients do not modify their local game state optimistically; they only render the `gameState` received from server broadcasts.
-- [ ] **Client: Implement Player Role Detection (e.g., in GameContext)**
-  - [ ] Client stores its `myPlayerId` (received from the server, see 1.1).
-  - [ ] When a `gameState` is received from the server (this state will include `player1Id` and `player2Id` for the match):
-    - [ ] Determine and store the client's role for the current match: e.g., `role = (myPlayerId === gameState.player1Id) ? 'player1' : (myPlayerId === gameState.player2Id ? 'player2' : 'observer')`.
-  - [ ] Expose this `role` and the latest `gameState` via React context for UI components to use.
+- [x] **Architecture: Implement Authoritative Server Model**
+  - [x] Clients send only intent-based messages to the server (e.g., `intent-move` including `myPlayerId` and relevant action data).
+  - [x] The server is the single source of truth for `gameState`.
+  - [x] Server validates all client intents against the authoritative `gameState` and game rules.
+  - [x] Server updates the authoritative `gameState` if an intent is valid.
+  - [x] Clients do not modify their local game state optimistically; they only render the `gameState` received from server broadcasts.
+- [x] **Client: Implement Player Role Detection (e.g., in GameContext)**
+  - [x] Client stores its `myPlayerId` (received from the server, see 1.1).
+  - [x] When a `gameState` is received from the server (this state will include `player1Id` and `player2Id` for the match):
+    - [x] Determine and store the client's role for the current match: e.g., `role = (myPlayerId === gameState.player1Id) ? 'player1' : (myPlayerId === gameState.player2Id ? 'player2' : 'observer')`.
+  - [x] Expose this `role` and the latest `gameState` via React context for UI components to use.
 - [ ] Update game initialization
   - [x] Modify createNewGame to support two players (Server initializes with `player1Id`, `player2Id`)
   - [x] Remove AI player initialization
@@ -203,10 +203,10 @@ Phase 1 focuses on establishing the core multiplayer infrastructure, enabling mu
 - Consider bandwidth usage
 
 ## Next Steps After Phase 1
-- Begin Phase 2: Game Logic & Turn System
-- Implement turn-based mechanics
-- Add player action validation
-- Develop conflict resolution system 
+- [ ] Implement turn-based mechanics (player turn handling, turn indicators)
+- [ ] Add player action validation (server-side turn enforcement)
+- [ ] Develop conflict resolution system (for PvP)
+- [ ] Add player-specific state tracking and isolation
 
 ### Quality of Life Features
 - [ ] Implement player reconnection handling

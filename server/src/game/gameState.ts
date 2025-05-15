@@ -27,7 +27,7 @@ class GameStateManager {
     console.log(`Starting tick loop for match ${this.currentMatchId} with speed:`, this.gameState.tickSpeed);
     
     const matchIdForTick = this.currentMatchId;
-
+    
     this.tickInterval = setInterval(() => {
       if (!this.gameState.isPaused) {
         this.gameState = processTick(this.gameState);
@@ -47,7 +47,7 @@ class GameStateManager {
   ): GameState {
     console.log(`Initializing new game for match ${matchId}...`);
     this.currentMatchId = matchId;
-
+    
     this.gameState = {
       ...createNewGame(width, height),
       isPaused: false,

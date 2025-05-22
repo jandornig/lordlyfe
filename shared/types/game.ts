@@ -1,4 +1,4 @@
-export type Owner = "player" | "ai" | null;
+export type Owner = "player1" | "player2" | null;
 
 export interface Tile {
   x: number;
@@ -18,7 +18,22 @@ export interface Territory {
   lordTile: { x: number, y: number } | null;
 }
 
+export interface Unit {
+  id: string;
+  controlledBy: string; // player1Id or player2Id
+  position: { x: number; y: number };
+  armySize: number;
+  owner: Owner;
+}
+
 export interface GameState {
+  matchId: string;
+  player1Id: string;
+  player1Name: string;
+  player2Id: string;
+  player2Name: string;
+  player1Units: Unit[];
+  player2Units: Unit[];
   width: number;
   height: number;
   tick: number;
@@ -42,6 +57,7 @@ export type Movement = {
   waypoints: { x: number, y: number }[];
   mustReachWaypoint?: boolean;
   isWaypoint?: boolean;
+  playerId: string;
 };
 
 export interface Waypoint {

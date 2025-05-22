@@ -5,9 +5,36 @@ import cors from 'cors';
 import { gameStateManager } from './game/gameState';
 import { createPathMovements } from './game/gameLogic';
 import { matchmakingQueue } from './game/matchmaking';
-import { Tile } from './types/game';
+import { Tile, GameState } from '../../shared/types/game';
 import { v4 as uuidv4 } from 'uuid';
 
+// Debug flags to control logging
+const DEBUG = {
+  MOVEMENTS: false,
+  CONNECTIONS: true,
+  GAME_STATE: true,
+  ERRORS: true
+};
+
+// Logging utilities
+const logSeparator = '='.repeat(80);
+const logSection = (title: string) => {
+  console.log('\n' + logSeparator);
+  console.log(` ${title}`);
+  console.log(logSeparator);
+};
+
+const logEvent = (event: string, data: any) => {
+  if (event === 'MOVEMENT_QUEUED' && !DEBUG.MOVEMENTS) return;
+  if (event === 'CONNECT' && !DEBUG.CONNECTIONS) return;
+  if (event === 'GAME_STATE_UPDATE' && !DEBUG.GAME_STATE) return;
+  if (event === 'ERROR' && !DEBUG.ERRORS) return;
+  
+  console.log(`\n[${event}]`, data);
+};
+
+// Initialize Express and Socket.IO
+logSection('Server Initialization');
 const app = express();
 const server = http.createServer(app);
 export const io = new Server(server, {
@@ -21,37 +48,37 @@ app.use(cors()); // Enable CORS for all routes
 const PORT = process.env.PORT || 3000;
 
 // Simple in-memory mapping for socket.id to playerId
-const socketPlayerMap = new Map<string, string>();
+export const socketPlayerMap = new Map<string, string>();
 // New: mapping for socket.id to matchId
-const socketMatchMap = new Map<string, string>();
+export const socketMatchMap = new Map<string, string>();
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-  // const clientId = socket.handshake.auth.clientId; // Keep for potential future use if needed
-  console.log('Client connected with socket ID:', socket.id);
+  logSection('New Client Connection');
+  logEvent('CONNECT', { socketId: socket.id });
 
   // Generate and assign playerId
   const playerId = uuidv4();
   socketPlayerMap.set(socket.id, playerId);
   socket.emit('player-id-assigned', { playerId });
-  console.log(`Assigned playerId ${playerId} to socket ${socket.id}`);
+  logEvent('PLAYER_ID_ASSIGNED', { socketId: socket.id, playerId });
 
   // Handle player connection
-  // Client will send playerName, server already knows playerId
   socket.on('player-connect', (data: { playerName: string }) => {
     const currentSocketId = socket.id;
     const assignedPlayerId = socketPlayerMap.get(currentSocketId);
 
     if (!assignedPlayerId) {
-      console.error(`Player ID not found for socket ${currentSocketId}. This should not happen.`);
-      // Potentially disconnect or send an error to the client
+      logEvent('ERROR', {
+        type: 'PLAYER_ID_NOT_FOUND',
+        socketId: currentSocketId,
+        message: 'Player ID not found for socket. This should not happen.'
+      });
       return;
     }
     
-    // Only log the first connection for each player (or if specific connect data changes)
-    // The socket.data.hasConnected logic might need adjustment if we rely on this event for more than initial name.
-    if (!socket.data.hasConnectedWithName) { // Changed condition to be more specific
-      console.log('Player announced:', {
+    if (!socket.data.hasConnectedWithName) {
+      logEvent('PLAYER_CONNECTED', {
         playerId: assignedPlayerId,
         playerName: data.playerName,
         socketId: currentSocketId
@@ -60,79 +87,98 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Listen for joining a match room (set by matchmaking)
+  // Listen for joining a match room
   socket.on('join-match-room', (data: { matchId: string }) => {
     socketMatchMap.set(socket.id, data.matchId);
-    console.log(`Socket ${socket.id} joined match room ${data.matchId}`);
+    logEvent('JOIN_MATCH_ROOM', {
+      socketId: socket.id,
+      matchId: data.matchId,
+      playerId: socketPlayerMap.get(socket.id)
+    });
   });
 
   // Handle disconnection
   socket.on('disconnect', () => {
     const disconnectedPlayerId = socketPlayerMap.get(socket.id);
     const matchId = socketMatchMap.get(socket.id);
-    console.log(`Client disconnected: socket ${socket.id}, player ${disconnectedPlayerId || 'N/A'}, match ${matchId || 'N/A'}`);
+    logEvent('DISCONNECT', {
+      socketId: socket.id,
+      playerId: disconnectedPlayerId || 'N/A',
+      matchId: matchId || 'N/A'
+    });
     matchmakingQueue.removePlayer(socket.id);
     socketPlayerMap.delete(socket.id);
     socketMatchMap.delete(socket.id);
   });
 
   // Handle game start
-  // Client sends playerName. Server uses its mapped playerId.
   socket.on('start-game', (data: { width?: number, height?: number, playerName: string }) => {
     const currentSocketId = socket.id;
     const assignedPlayerId = socketPlayerMap.get(currentSocketId);
 
     if (!assignedPlayerId) {
-      console.error(`Player ID not found for socket ${currentSocketId} during start-game. This should not happen.`);
-      // Potentially disconnect or send an error to the client
+      logEvent('ERROR', {
+        type: 'START_GAME_PLAYER_ID_NOT_FOUND',
+        socketId: currentSocketId,
+        message: 'Player ID not found during start-game. This should not happen.'
+      });
       return;
     }
 
-    console.log('Player starting game:', {
-      playerId: assignedPlayerId, // Use server-assigned playerId
+    logEvent('GAME_START_REQUEST', {
+      playerId: assignedPlayerId,
       playerName: data.playerName,
       socketId: currentSocketId,
       width: data.width,
       height: data.height
     });
-    // Add player to matchmaking queue
+
     matchmakingQueue.addPlayer({
-      playerId: assignedPlayerId, // Use server-assigned playerId
+      playerId: assignedPlayerId,
       playerName: data.playerName,
       socketId: currentSocketId
     });
-  });
-
-  // Placeholder for other game-specific events
-  socket.on('game-action', (data) => {
-    const actionPlayerId = socketPlayerMap.get(socket.id);
-    console.log(`Game action from player ${actionPlayerId}:`, data);
-    // Handle game action
   });
 
   // Handle movement requests
   socket.on('move-army', (data: { movements: any[] }) => {
     const matchId = socketMatchMap.get(socket.id);
     const actingPlayerId = socketPlayerMap.get(socket.id);
+    
     if (!matchId || !actingPlayerId) {
-      console.warn(`move-army: Could not find match or player for socket ${socket.id}`);
+      logEvent('ERROR', {
+        type: 'MOVE_ARMY_MAPPING_NOT_FOUND',
+        socketId: socket.id,
+        matchId: matchId || 'N/A',
+        playerId: actingPlayerId || 'N/A'
+      });
       return;
     }
-    // Validate that actingPlayerId is in the match (basic check)
+
     const gameState = gameStateManager.getGameState();
-    if (gameState.playerId !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
-      console.warn(`move-army: Player ${actingPlayerId} is not in match ${matchId}`);
+    if (gameState.player1Id !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
+      logEvent('ERROR', {
+        type: 'MOVE_ARMY_PLAYER_NOT_IN_MATCH',
+        socketId: socket.id,
+        playerId: actingPlayerId,
+        matchId: matchId
+      });
       return;
     }
-    console.log('=== Click Event ===');
-    console.log('Click data:', {
-      movements: data.movements.map(m => ({
-        from: m.from,
-        to: m.to,
-        armyPercentage: m.armyPercentage,
-        waypoints: m.waypoints
-      }))
-    });
+
+    if (DEBUG.MOVEMENTS) {
+      logEvent('MOVE_ARMY_REQUEST', {
+        socketId: socket.id,
+        playerId: actingPlayerId,
+        matchId: matchId,
+        movements: data.movements.map(m => ({
+          from: m.from,
+          to: m.to,
+          armiesToMove: m.armiesToMove,
+          waypoints: m.waypoints
+        }))
+      });
+    }
 
     try {
       // Process each movement
@@ -140,27 +186,12 @@ io.on('connection', (socket) => {
         const fromTile = gameState.tiles.find((t: Tile) => t.x === movement.from.x && t.y === movement.from.y);
         const toTile = gameState.tiles.find((t: Tile) => t.x === movement.to.x && t.y === movement.to.y);
         
-        console.log('Processing click:', {
-          from: fromTile ? { 
-            x: fromTile.x, 
-            y: fromTile.y, 
-            army: fromTile.army, 
-            owner: fromTile.owner,
-            type: fromTile.isLord ? 'lord' : fromTile.isCity ? 'city' : 'territory'
-          } : 'not found',
-          to: toTile ? { 
-            x: toTile.x, 
-            y: toTile.y, 
-            army: toTile.army, 
-            owner: toTile.owner,
-            type: toTile.isLord ? 'lord' : toTile.isCity ? 'city' : 'territory'
-          } : 'not found',
-          armyPercentage: movement.armyPercentage,
-          waypoints: movement.waypoints
-        });
-        
         if (!fromTile || !toTile) {
-          console.error('Source or target tile not found');
+          logEvent('ERROR', {
+            type: 'MOVE_ARMY_TILES_NOT_FOUND',
+            from: movement.from,
+            to: movement.to
+          });
           continue;
         }
         
@@ -169,52 +200,40 @@ io.on('connection', (socket) => {
           gameState,
           fromTile,
           toTile,
-          movement.armyPercentage || 1,
-          movement.waypoints || []
+          movement.armiesToMove,
+          movement.waypoints || [],
+          actingPlayerId
         );
         
         if (pathMovements && pathMovements.length > 0) {
           gameState.movementQueue.push(...pathMovements);
-          console.log('Movement queued:', {
-            queueLength: gameState.movementQueue.length,
-            pathMovements: pathMovements.map(m => ({
-              from: { x: m.from.x, y: m.from.y },
-              to: { x: m.to.x, y: m.to.y },
-              army: m.army
-            }))
-          });
-        } else {
-          console.log('No valid path movements created');
+          if (DEBUG.MOVEMENTS) {
+            logEvent('MOVEMENT_QUEUED', {
+              queueLength: gameState.movementQueue.length,
+              pathMovements: pathMovements.map(m => ({
+                from: { x: m.from.x, y: m.from.y },
+                to: { x: m.to.x, y: m.to.y },
+                army: m.army,
+                playerId: m.playerId
+              }))
+            });
+          }
         }
       }
-      
-      // Update game state
-      gameStateManager.updateGameState(gameState);
-      
-      // Broadcast the updated state to the match room only
-      io.to(matchId).emit('game-state-update', gameStateManager.getGameState());
-      console.log(`[move-army] Updated and broadcasted game state for match ${matchId}`);
     } catch (error) {
-      console.error('Error processing click:', error);
+      let errorMsg = '';
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMsg = (error as any).message;
+      } else {
+        errorMsg = String(error);
+      }
+      logEvent('ERROR', {
+        type: 'MOVE_ARMY_PROCESSING_ERROR',
+        error: errorMsg,
+        socketId: socket.id,
+        playerId: actingPlayerId
+      });
     }
-  });
-
-  // Handle tick speed changes
-  socket.on('set-tick-speed', (data: { speed: number }) => {
-    const matchId = socketMatchMap.get(socket.id);
-    const actingPlayerId = socketPlayerMap.get(socket.id);
-    if (!matchId || !actingPlayerId) {
-      console.warn(`set-tick-speed: Could not find match or player for socket ${socket.id}`);
-      return;
-    }
-    const gameState = gameStateManager.getGameState();
-    if (gameState.playerId !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
-      console.warn(`set-tick-speed: Player ${actingPlayerId} is not in match ${matchId}`);
-      return;
-    }
-    gameStateManager.setTickSpeed(data.speed);
-    io.to(matchId).emit('game-state-update', gameStateManager.getGameState());
-    console.log(`[set-tick-speed] Updated and broadcasted game state for match ${matchId}`);
   });
 
   // Handle pause toggle
@@ -222,27 +241,60 @@ io.on('connection', (socket) => {
     const matchId = socketMatchMap.get(socket.id);
     const actingPlayerId = socketPlayerMap.get(socket.id);
     if (!matchId || !actingPlayerId) {
-      console.warn(`toggle-pause: Could not find match or player for socket ${socket.id}`);
+      logEvent('ERROR', {
+        type: 'TOGGLE_PAUSE_MAPPING_NOT_FOUND',
+        socketId: socket.id,
+        matchId: matchId || 'N/A',
+        playerId: actingPlayerId || 'N/A'
+      });
       return;
     }
     const gameState = gameStateManager.getGameState();
-    if (gameState.playerId !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
-      console.warn(`toggle-pause: Player ${actingPlayerId} is not in match ${matchId}`);
+    if (gameState.player1Id !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
+      logEvent('ERROR', {
+        type: 'TOGGLE_PAUSE_PLAYER_NOT_IN_MATCH',
+        socketId: socket.id,
+        playerId: actingPlayerId,
+        matchId: matchId
+      });
       return;
     }
     gameStateManager.togglePause();
     io.to(matchId).emit('game-state-update', gameStateManager.getGameState());
-    console.log(`[toggle-pause] Updated and broadcasted game state for match ${matchId}`);
+    logEvent('GAME_PAUSED', {
+      matchId,
+      playerId: actingPlayerId,
+      isPaused: gameStateManager.getGameState().isPaused
+    });
   });
 
   // Handle clear movement queue
   socket.on('clear-movement-queue', () => {
-    console.log('Clearing movement queue');
-    gameStateManager.clearMovementQueue();
-    io.emit('game-state-update', gameStateManager.getGameState());
+    const matchId = socketMatchMap.get(socket.id);
+    if (!matchId) {
+      logEvent('ERROR', {
+        type: 'CLEAR_QUEUE_NO_MATCH',
+        socketId: socket.id
+      });
+      return;
+    }
+
+    // Get the player ID based on the socket
+    const gameState = gameStateManager.getGameState();
+    const actingPlayerId = socket.id === gameState.player1Id ? 
+      gameState.player1Id : 
+      gameState.player2Id;
+
+    gameStateManager.clearMovementQueue(actingPlayerId);
   });
 });
 
+// Start the server
 server.listen(PORT, () => {
+  logSection('Server Started');
   console.log(`Server running on port ${PORT}`);
+  console.log('Environment:', process.env.NODE_ENV || 'development');
+  console.log('CORS enabled for all origins');
+  console.log('Socket.IO server initialized');
+  console.log(logSeparator);
 }); 

@@ -1,0 +1,23 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Next Step Workflow
+
+1. **Check NextStep Document Before Execution:**
+   - Before executing any task, check the `nextStep.md` document (create it if it doesnt exist) to ensure alignment with the current goals.
+   - Skip this check if the task is focused on bug fixing.
+
+2. **Update NextStep Document if Needed:**
+   - If the current state or requirements change, update the `nextStep.md` document to reflect the new priorities.
+
+4. **Execute the Next Step:**
+   - Proceed with the execution of the task as outlined in the `nextStep.md` document.
+
+4. **Update NextStep Document After Execution:**
+   - After completing the task, update the `nextStep.md` document to reflect the progress and outline the next immediate steps. If a larger process was completed. Ensure the roadmap document is also updated.
+
+5. **Repeat the Process:**
+
+   - Continuously follow this workflow to ensure clarity and alignment throughout the project lifecycle.

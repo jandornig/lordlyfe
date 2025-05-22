@@ -1,6 +1,7 @@
 import { io } from '../index';
 import { gameStateManager } from './gameState';
 import { v4 as uuidv4 } from 'uuid';
+import { socketMatchMap } from '../index';
 
 interface QueuedPlayer {
   playerId: string;
@@ -48,6 +49,7 @@ class MatchmakingQueue {
 
       if (socket1) {
         socket1.join(matchId);
+        socketMatchMap.set(socket1.id, matchId);
         console.log(`Player ${player1.playerId} (socket ${player1.socketId}) joined match room ${matchId}`);
         // Inform server logic of match membership
         socket1.emit('join-match-room', { matchId });
@@ -59,12 +61,14 @@ class MatchmakingQueue {
 
       if (socket2) {
         socket2.join(matchId);
+        socketMatchMap.set(socket2.id, matchId);
         console.log(`Player ${player2.playerId} (socket ${player2.socketId}) joined match room ${matchId}`);
         // Inform server logic of match membership
         socket2.emit('join-match-room', { matchId });
       } else {
         console.error(`Socket not found for player ${player2.playerId}`);
         socket1.leave(matchId);
+        socketMatchMap.delete(socket1.id);
         this.queue.unshift(player1);
         return;
       }

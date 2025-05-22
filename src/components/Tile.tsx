@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
-import { Tile as TileType } from '@/types/game';
-import { useGame } from '@/contexts/GameContext';
+import { Tile as TileType } from '../types/game';
+import { useGame } from '../contexts/GameContext';
 import { Crown, Building2, Mountain } from 'lucide-react';
-import { requestMovement } from '@/lib/movement';
-import { showSupplyLineButton, hideSupplyLineButton, getCurrentSupplyLineButton } from '@/lib/supplyLine';
+import { requestMovement } from '../lib/movement';
+import { showSupplyLineButton, hideSupplyLineButton, getCurrentSupplyLineButton } from '../lib/supplyLine';
 import SupplyLineButton from './SupplyLineButton';
 
 interface TileProps {
@@ -12,10 +12,11 @@ interface TileProps {
 }
 
 const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
-  const { gameState, selectTile, moveArmy, waypoints, setWaypoints } = useGame();
+  const { gameState, selectTile, moveArmy, waypoints, setWaypoints, playerRole } = useGame();
   const { selectedTile, minGarrison, territories, tiles } = gameState;
   const [mouseStartPos, setMouseStartPos] = useState<{ x: number, y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [dragDistance, setDragDistance] = useState(0);
   const [, forceUpdate] = useState({}); // Used to trigger re-renders
   
   // Determine if this tile is adjacent to selectedTile
@@ -42,25 +43,16 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
     return neighbors.some(neighbor => neighbor?.territory !== tile.territory);
   }, [tile, tiles]);
 
-  // Determine if this tile can be selected
+  // Memoize the selection check result
   const canSelect = useMemo(() => {
-    return tile.owner === 'player' && tile.army > 1;
-  }, [tile]);
+    if (!tile.isVisible || tile.isMountain) return false;
   
-  // Determine background color based on owner or territory
-  const bgColor = useMemo(() => {
-    if (tile.isMountain) return 'bg-mountain';
-    if (tile.owner === 'player') return 'bg-player';
-    if (tile.owner === 'ai') return 'bg-opponent';
+    // Check if tile belongs to current player
+    const isPlayerTile = playerRole === 'player1' ? tile.owner === 'player1' :
+                        playerRole === 'player2' ? tile.owner === 'player2' : false;
     
-    // If neutral, show territory color
-    if (tile.territory !== null && territories && territories[tile.territory]) {
-      return `bg-[${territories[tile.territory].color}]`;
-    }
-    
-    if (tile.isCity) return 'bg-city bg-opacity-30';
-    return 'bg-neutral bg-opacity-20';
-  }, [tile, territories]);
+    return isPlayerTile && tile.army > 1;
+  }, [tile.isVisible, tile.isMountain, tile.owner, tile.army, playerRole]);
   
   // Handle right click for waypoints
   const handleRightClick = (e: React.MouseEvent) => {
@@ -89,141 +81,109 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
 
   // Handle tile click
   const handleClick = async (e: React.MouseEvent) => {
-    // Log raw click event
-    console.log('=== Raw Click Event ===', {
-      target: e.target,
-      currentTarget: e.currentTarget,
-      clientX: e.clientX,
-      clientY: e.clientY,
-      timeStamp: e.timeStamp,
-      type: e.type
-    });
-
-    // Prevent click if panning
-    if (disablePropagation) {
-      console.log('Click prevented due to panning');
-      e.preventDefault();
-      e.stopPropagation();
+    // If we're dragging or propagation is disabled, don't handle the click
+    if (isDragging || disablePropagation || dragDistance > 5) {
       return;
     }
+
+    console.log('=== Raw Click Event ===', e);
     
-    // Stop propagation to prevent panning when clicking on tiles
-    e.stopPropagation();
+    // Log selection check details only during click
+    console.log('Tile selection check details:', {
+      tile: { 
+        x: tile.x, 
+        y: tile.y, 
+        owner: tile.owner, 
+        army: tile.army,
+        isLord: tile.isLord,
+        isCity: tile.isCity
+      },
+      playerRole,
+      isPlayerTile: playerRole === 'player1' ? tile.owner === 'player1' :
+                   playerRole === 'player2' ? tile.owner === 'player2' : false,
+      hasEnoughArmy: tile.army > 1
+    });
     
     console.log('Click handler state:', {
-      selectedTile: selectedTile ? {
-        x: selectedTile.x,
-        y: selectedTile.y,
-        army: selectedTile.army,
-        owner: selectedTile.owner
-      } : null,
+      selectedTile,
       clickedTile: {
         x: tile.x,
         y: tile.y,
-        army: tile.army,
         owner: tile.owner,
-        isMountain: tile.isMountain
+        army: tile.army,
+        isLord: tile.isLord,
+        isCity: tile.isCity
       },
       canSelect,
-      waypoints
+      waypoints,
+      playerRole
     });
     
-    // If no tile is selected and this is player's tile with armies > 1, select it
-    if (!selectedTile && canSelect) {
-      console.log('Selecting tile:', {
-        x: tile.x,
-        y: tile.y,
-        army: tile.army,
-        owner: tile.owner,
-        type: tile.isLord ? 'lord' : tile.isCity ? 'city' : 'territory'
-      });
-      selectTile(tile);
+    // If we have a selected tile, this is a movement attempt
+    if (selectedTile) {
+      // For movement, we only need to check if the destination is not a mountain
+      if (tile.isMountain) {
+        console.log('Invalid movement destination: Mountain tile');
       return;
     }
     
-    // If a tile is already selected
-    if (selectedTile) {
-      console.log('Processing click with selected tile:', {
-        selectedTile: {
+      console.log('Attempting movement:', {
+        from: {
           x: selectedTile.x,
           y: selectedTile.y,
+          owner: selectedTile.owner,
           army: selectedTile.army,
-          owner: selectedTile.owner
+          isLord: selectedTile.isLord,
+          isCity: selectedTile.isCity
         },
-        clickedTile: {
+        to: {
           x: tile.x,
           y: tile.y,
+          owner: tile.owner,
           army: tile.army,
-          owner: tile.owner
-        }
-      });
-
-      // If clicking on the same tile
-      if (selectedTile.x === tile.x && selectedTile.y === tile.y) {
-        console.log('Clicked on same tile, deselecting');
-        // If no waypoints, deselect
-        if (waypoints.length === 0) {
-          selectTile(null);
-          return;
-        }
-        // If waypoints exist, treat it as a movement target
-      }
-      
-      // If clicking on another tile with a selected tile, initiate movement
-      if (selectedTile.owner === 'player') {
-        console.log('Attempting movement from player tile');
-        // Get the current state of the selected tile
-        const currentSelectedTile = gameState.tiles.find(t => 
-          t.x === selectedTile.x && t.y === selectedTile.y
-        );
-        
-        if (!currentSelectedTile) {
-          console.log('Selected tile not found in current game state');
-          return;
-        }
-
-        console.log('Initiating movement:', {
-          from: {
-            x: currentSelectedTile.x,
-            y: currentSelectedTile.y,
-            army: currentSelectedTile.army,
-            owner: currentSelectedTile.owner
-          },
-          to: {
-            x: tile.x,
-            y: tile.y,
-            army: tile.army,
-            owner: tile.owner
-          },
-          waypoints,
-          waypointsLength: waypoints.length
+          isLord: tile.isLord,
+          isCity: tile.isCity
+        },
+        waypoints,
+        playerRole
         });
 
-        const success = await requestMovement(gameState, currentSelectedTile, tile, waypoints);
+      const success = await requestMovement(gameState, selectedTile, tile, waypoints);
         
         if (success) {
           console.log('Movement request sent successfully');
           selectTile(null);
+        setWaypoints([]);
         } else {
           console.log('Movement request failed');
         }
         return;
       }
       
-      // Otherwise, try to select this tile if it's the player's and has more than 1 army
-      if (canSelect) {
-        console.log('Selecting new tile:', {
+    // If no tile is selected, this is a selection attempt
+    if (!canSelect) {
+      console.log('Tile cannot be selected:', {
+        isVisible: tile.isVisible,
+        isMountain: tile.isMountain,
+        owner: tile.owner,
+        playerRole,
+        army: tile.army,
+        isLord: tile.isLord,
+        isCity: tile.isCity
+      });
+      return;
+    }
+
+    console.log('Selecting tile:', {
           x: tile.x,
           y: tile.y,
+      owner: tile.owner,
           army: tile.army,
-          owner: tile.owner
+      isLord: tile.isLord,
+      isCity: tile.isCity,
+      playerRole
         });
         selectTile(tile);
-      } else {
-        console.log('Deselecting tile - clicked tile not selectable');
-        selectTile(null);
-      }
-    }
   };
 
   // Track mouse down position
@@ -231,15 +191,19 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
     if (!disablePropagation) {
       setMouseStartPos({ x: e.clientX, y: e.clientY });
       setIsDragging(false);
+      setDragDistance(0);
     }
   };
 
   // Track mouse movement
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (mouseStartPos) {
+    if (mouseStartPos && !disablePropagation) {
       const dx = Math.abs(e.clientX - mouseStartPos.x);
       const dy = Math.abs(e.clientY - mouseStartPos.y);
-      if (dx > 5 || dy > 5) {
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      setDragDistance(distance);
+      
+      if (distance > 5) {
         setIsDragging(true);
       }
     }
@@ -248,7 +212,11 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
   // Clear mouse position on mouse up
   const handleMouseUp = () => {
     setMouseStartPos(null);
-    setIsDragging(false);
+    // Reset drag state after a short delay
+    setTimeout(() => {
+      setIsDragging(false);
+      setDragDistance(0);
+    }, 100);
   };
   
   // Get inline style for territory color
@@ -257,10 +225,10 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
     
     // Handle lord tiles first
     if (tile.isLord) {
-      if (tile.owner === 'player') {
-        return { backgroundColor: '#3B82F6' }; // Blue for player lord
-      } else if (tile.owner === 'ai') {
-        return { backgroundColor: '#EF4444' }; // Red for AI lord
+      if (tile.owner === 'player1') {
+        return { backgroundColor: '#3B82F6' }; // Blue for player1 lord
+      } else if (tile.owner === 'player2') {
+        return { backgroundColor: '#EF4444' }; // Red for player2 lord
       }
     }
     
@@ -337,7 +305,7 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
       };
 
       const territoryRgb = hexToRgb(territoryColor);
-      const ownerColor = tile.owner === 'player' ? '#3B82F6' : '#EF4444'; // Blue for player, Red for AI
+      const ownerColor = tile.owner === 'player1' ? '#3B82F6' : '#EF4444'; // Blue for player1, Red for player2
       const ownerRgb = hexToRgb(ownerColor);
       
       if (territoryRgb && ownerRgb) {
@@ -374,10 +342,10 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
       }
       
       // Handle non-territory owned tiles
-      if (tile.owner === 'player') {
-        return { backgroundColor: '#3B82F6' }; // Blue for player
-      } else if (tile.owner === 'ai') {
-        return { backgroundColor: '#EF4444' }; // Red for AI
+      if (tile.owner === 'player1') {
+        return { backgroundColor: '#3B82F6' }; // Blue for player1
+      } else if (tile.owner === 'player2') {
+        return { backgroundColor: '#EF4444' }; // Red for player2
       }
       
       return {};
@@ -402,10 +370,10 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
       return '#4A4A4A';
     }
     
-    if (tile.owner === 'player') {
-      return '#3B82F6'; // Blue for player
-    } else if (tile.owner === 'ai') {
-      return '#EF4444'; // Red for AI
+    if (tile.owner === 'player1') {
+      return '#3B82F6'; // Blue for player1
+    } else if (tile.owner === 'player2') {
+      return '#EF4444'; // Red for player2
     }
     
     // For neutral tiles, use territory color if available
@@ -438,12 +406,12 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         transition-all duration-150 hover:opacity-90
         flex items-center justify-center
         ${tile.owner ? 'text-white' : 'text-gray-300'}
-        ${(tile.owner === 'player' && tile.army > 0) ? 'cursor-pointer' : ''}
+        ${(tile.owner === 'player1' && tile.army > 0) ? 'cursor-pointer' : ''}
       `}
       style={{
         backgroundColor: getTileColor(),
         opacity: getTileOpacity(),
-        cursor: tile.owner === 'player' && tile.army > 1 ? 'pointer' : 'default'
+        cursor: tile.owner === 'player1' && tile.army > 1 ? 'pointer' : 'default'
       }}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
@@ -454,8 +422,8 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
       {/* Army count */}
       {tile.isVisible && !tile.isMountain && tile.army > 0 && (
         <span className={`text-sm font-bold z-10 ${
-          tile.owner === 'player' ? 'text-white' : 
-          tile.owner === 'ai' ? 'text-gray-900' : 
+          tile.owner === 'player1' ? 'text-white' : 
+          tile.owner === 'player2' ? 'text-gray-900' : 
           'text-gray-800'
         }`}>{tile.army}</span>
       )}
@@ -465,8 +433,8 @@ const Tile: React.FC<TileProps> = ({ tile, disablePropagation = false }) => {
         <div className="absolute top-0 left-0 p-0.5">
           <Crown 
             className={`h-3 w-3 ${
-              tile.owner === 'player' ? 'text-yellow-300' : 
-              tile.owner === 'ai' ? 'text-red-300' : 
+              tile.owner === 'player1' ? 'text-yellow-300' : 
+              tile.owner === 'player2' ? 'text-red-300' : 
               'text-black'
             }`} 
           />

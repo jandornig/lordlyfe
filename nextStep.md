@@ -1,72 +1,68 @@
-# Next Steps
+# Next Steps - Bug Fixes
 
-## Immediate Priority: Player-Specific Unit Focus and Control
+## 1. Path Selection Issues ✓
+- [x] Fix path selection interference with camera panning
+  - [x] Prevent path endpoint selection during camera panning
+  - [x] Add proper click vs drag detection
+  - [x] Ensure path selection only triggers on intentional clicks
+  - [x] Add minimum drag distance threshold for panning
 
-### 1. Game State Updates ✅
-- [x] Update `GameState` interface in `shared/types/game.ts`:
-  ```typescript
-  interface GameState {
-    // ... existing fields ...
-    player1Units: Unit[];
-    player2Units: Unit[];
-  }
-  ```
-- [x] Update `Unit` interface:
-  ```typescript
-  interface Unit {
-    id: string;
-    controlledBy: string;  // player1Id or player2Id
-    position: { x: number; y: number };
-    armySize: number;
-    owner: Owner;
-  }
-  ```
+## 2. Victory/Defeat State Handling ✓
+- [x] Fix victory/defeat popup logic
+  - [x] Ensure correct popup shows for each player based on their role
+  - [x] Player 1 should see "Defeated" when their lord is captured
+  - [x] Player 2 should see "Victory" when capturing Player 1's lord
+  - [x] Add proper state checks for victory/defeat conditions
+  - [x] Verify popup triggers only for the affected player
 
-### 2. Server-Side Implementation ✅
-- [x] Modify `createNewGame` in `server/src/game/gameLogic.ts`:
-  - [x] Initialize empty `player1Units` and `player2Units` arrays
-  - [x] Set initial lord positions for both players
-  - [x] Create initial units for each player
-- [x] Update unit movement validation:
-  - [x] Add ownership checks in movement logic
-  - [x] Verify `controlledBy` matches acting player's ID
-- [x] Update game state broadcasting:
-  - [x] Ensure unit arrays are included in state updates
-  - [x] Add unit-specific events if needed
+## 3. Game Balance ✓
+- [x] Fix starting army balance
+  - [x] Ensure Player 2's lord tile starts with same army size as Player 1 (10 armies)
+  - [x] Verify army initialization in game state
+  - [x] Add validation for equal starting conditions
+  - [x] Test game start with multiple players to confirm balance
 
-### 3. Client-Side Implementation ✅
-- [x] Update `GameContext` to handle player-specific units:
-  - [x] Add unit filtering based on player role
-  - [x] Add unit ownership checks
-- [x] Modify unit rendering:
-  - [x] Add visual indicators for owned units
-  - [x] Update unit selection logic
-- [x] Update movement handling:
-  - [x] Add ownership validation before sending moves
-  - [x] Update UI feedback for invalid moves
-- [x] Implement player-specific camera focus:
-  - [x] Add initial camera position based on player role
-  - [x] Focus camera on player's lord tile on game start
-  - [x] Add camera controls for each player independently
-  - [x] Ensure camera state doesn't affect other players
+## 4. UI Text Updates
+- [x] Update UI text references
+  - [x] Change "AI Army" to "Player 2" in top UI element
+  - [x] Review and update any remaining AI references
+  - [x] Ensure consistent player naming throughout UI
+  - [x] Verify text updates in all game states
+- [ ] Fix inconsistent army labels
+  - [ ] Change "Your Army" to "Player 1 Army" for consistency
+  - [ ] Update territory labels to match army label style
+  - [ ] Ensure consistent naming across all UI elements
 
-### 4. Testing & Validation
-- [ ] Unit tests for:
-  - [ ] Game state initialization
-  - [ ] Unit ownership validation
-  - [ ] Movement permissions
-- [ ] Integration tests for:
-  - [ ] Player-specific unit tracking
-  - [ ] Movement validation
-  - [ ] State synchronization
-- [ ] Manual testing:
-  - [ ] Verify unit ownership display
-  - [ ] Test movement restrictions
-  - [ ] Check state consistency
-  - [ ] Verify camera focus works correctly for each player
+## 5. Movement Queue Controls ✓
+- [x] Fix movement queue clearing functionality
+  - [x] Implement 'q' key handler to clear player's movement queue
+  - [x] Ensure queue clearing only affects current player's movements
+  - [x] Add visual feedback when queue is cleared
+  - [x] Verify queue clearing works in all game states
 
-## Future Considerations
-- Real-time, tick-based action processing for multiple players
-- Player action validation (server-side enforcement)
-- Conflict resolution system for simultaneous actions
-- Player-specific state tracking and isolation
+## 6. Matchmaking Flow
+- [x] Fix "Play Again" functionality
+  - [x] Ensure players re-enter matchmaking queue after game end
+  - [x] Add proper state cleanup after game end
+  - [x] Add loading state while waiting for opponent
+  - [x] Test reconnection scenarios
+- [ ] Fix single player game start (especially after play again button)
+  - [ ] Add validation to prevent game start with single player
+  - [ ] Implement proper matchmaking queue checks
+  - [ ] Add server-side validation for minimum player count
+  - [ ] Test matchmaking flow with various player counts
+
+## 7. Code Improvements
+- [ ] Refactor starting army configuration
+  - [ ] Create a single constant for starting army size
+  - [ ] Update all references to use this constant
+  - [ ] Add validation to ensure both players use same starting army size
+  - [ ] Document the configuration in code comments
+
+## 8. Camera System
+- [ ] Fix camera flickering issues
+  - [ ] Add logging for non-player camera movements
+  - [ ] Track camera movement triggers
+  - [ ] Identify and fix sources of unwanted camera updates
+  - [ ] Implement debouncing for camera position updates
+  - [ ] Add camera movement validation

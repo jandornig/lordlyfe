@@ -1,4 +1,4 @@
-import { GameState, Owner } from '../types/game';
+import { GameState, Owner } from '../../../shared/types/game';
 import { createNewGame, processMovements, processTick } from './gameLogic';
 import { io } from '../index';
 
@@ -51,8 +51,8 @@ class GameStateManager {
     this.gameState = {
       ...createNewGame(width, height),
       isPaused: false,
-      playerId,
-      playerName,
+      player1Id: playerId,
+      player1Name: playerName,
       player2Id,
       player2Name,
     };
@@ -61,19 +61,42 @@ class GameStateManager {
         this.gameState.tickSpeed = 1000;
     }
     
-    console.log('Game state initialized:', {
+    // Log detailed game state information
+    console.log('=== Game State Initialization ===');
+    console.log('Basic Info:', {
       matchId: this.currentMatchId,
       isPaused: this.gameState.isPaused,
       tick: this.gameState.tick,
       tickSpeed: this.gameState.tickSpeed,
-      player1Id: this.gameState.playerId,
-      player1Name: this.gameState.playerName,
+      player1Id: this.gameState.player1Id,
+      player1Name: this.gameState.player1Name,
       player2Id: this.gameState.player2Id,
       player2Name: this.gameState.player2Name
     });
 
+    // Log lord tiles information
+    const lordTiles = this.gameState.tiles.filter(tile => tile.isLord);
+    console.log('Lord Tiles:', lordTiles.map(tile => ({
+      x: tile.x,
+      y: tile.y,
+      owner: tile.owner,
+      army: tile.army,
+      isVisible: tile.isVisible
+    })));
+
     this.startTickLoop();
     
+    // Log before sending game state
+    console.log('=== Broadcasting Game State ===');
+    console.log('Sending to room:', this.currentMatchId);
+    console.log('Lord Tiles in broadcast:', lordTiles.map(tile => ({
+      x: tile.x,
+      y: tile.y,
+      owner: tile.owner,
+      army: tile.army,
+      isVisible: tile.isVisible
+    })));
+
     io.to(this.currentMatchId).emit('game-state-update', this.gameState);
     io.to(this.currentMatchId).emit('game-started', this.gameState);
 
@@ -118,14 +141,17 @@ class GameStateManager {
     io.to(this.currentMatchId).emit('game-state-update', this.gameState);
   }
 
-  clearMovementQueue() {
+  clearMovementQueue(playerId: string) {
     if (!this.currentMatchId) {
       console.warn("Cannot clear movement queue: no active game room.");
       return;
     }
-    console.log(`Clearing movement queue for match ${this.currentMatchId}`);
+    console.log(`Clearing movement queue for player ${playerId} in match ${this.currentMatchId}`);
     if (this.gameState && this.gameState.movementQueue) {
-      this.gameState.movementQueue = [];
+      // Only clear movements for the requesting player
+      this.gameState.movementQueue = this.gameState.movementQueue.filter(
+        movement => movement.playerId !== playerId
+      );
     }
     io.to(this.currentMatchId).emit('game-state-update', this.gameState);
   }
@@ -136,10 +162,15 @@ class GameStateManager {
       this.tickInterval = null;
     }
     if (this.currentMatchId) {
-        console.log(`Cleaning up game room for match ${this.currentMatchId}`);
-        this.currentMatchId = null;
+      console.log(`Cleaning up game room for match ${this.currentMatchId}`);
+      // Notify players that game is over
+      io.to(this.currentMatchId).emit('game-ended');
+      // Clean up the room
+      io.socketsLeave(this.currentMatchId);
+      this.currentMatchId = null;
     }
-    this.gameState = createNewGame(); 
+    // Reset game state
+    this.gameState = createNewGame();
   }
 }
 

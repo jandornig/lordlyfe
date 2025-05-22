@@ -1,4 +1,6 @@
-import { GameState, Tile, Owner, Movement, TickSpeed, Path, PathStep, Territory } from "../types/game";
+import { GameState, Tile, Owner, Movement, TickSpeed, Path, PathStep, Territory } from "../../../shared/types/game";
+import { v4 as uuidv4 } from 'uuid';
+import { Server } from 'socket.io';
 
 // Game version
 export const GAME_VERSION = '0.1.1.28';
@@ -29,9 +31,18 @@ const TERRITORY_COLORS = [
   '#E6E6FA', // Light Lavender
 ];
 
+// Debug flags
+const DEBUG = {
+  MOVEMENTS: false,
+  PATHFINDING: false,
+  GAME_STATE: false
+};
+
 export const createNewGame = (
   width: number = DEFAULT_MAP_SIZE, 
-  height: number = DEFAULT_MAP_SIZE
+  height: number = DEFAULT_MAP_SIZE,
+  player1Id: string = '',
+  player2Id: string = ''
 ): GameState => {
   const tiles: Tile[] = [];
   const territoryCount = Math.min(DEFAULT_TERRITORY_COUNT, TERRITORY_COLORS.length);
@@ -125,35 +136,57 @@ export const createNewGame = (
     tiles[playerLordIndex].isLord
   );
   
-  tiles[playerLordIndex].owner = "player";
+  tiles[playerLordIndex].owner = "player1";
   tiles[playerLordIndex].isLord = true;
   tiles[playerLordIndex].army = 10;
-  tiles[playerLordIndex].territory = null; // Player lord doesn't belong to a territory
-  
-  // Add AI lord tile in top right quadrant
-  let aiLordIndex;
+  tiles[playerLordIndex].territory = null;
+
+  // Add player2 lord tile in top right quadrant (repurposed from old AI logic)
+  let player2LordIndex;
   do {
-    const aiLordX = getRandomInt(Math.floor(width * 2/3), width - 1);
-    const aiLordY = getRandomInt(0, Math.floor(height / 3));
-    aiLordIndex = aiLordY * width + aiLordX;
+    const player2LordX = getRandomInt(Math.floor(width * 2/3), width - 1);
+    const player2LordY = getRandomInt(0, Math.floor(height / 3));
+    player2LordIndex = player2LordY * width + player2LordX;
   } while (
-    tiles[aiLordIndex].isMountain || 
-    tiles[aiLordIndex].isCity || 
-    tiles[aiLordIndex].isLord
+    tiles[player2LordIndex].isMountain || 
+    tiles[player2LordIndex].isCity || 
+    tiles[player2LordIndex].isLord
   );
+  tiles[player2LordIndex].owner = "player2";
+  tiles[player2LordIndex].isLord = true;
+  tiles[player2LordIndex].army = 10;
+  tiles[player2LordIndex].territory = null;
   
-  tiles[aiLordIndex].owner = "ai";
-  tiles[aiLordIndex].isLord = true;
-  tiles[aiLordIndex].army = 50;
-  tiles[aiLordIndex].territory = null; // AI lord doesn't belong to a territory
-  
-  // Set initial visibility for player lord and adjacent tiles
+  // Set initial visibility for player1 lord and adjacent tiles
   const playerLordTile = tiles[playerLordIndex];
   playerLordTile.isVisible = true;
   const adjacentTiles = getAdjacentTiles({ tiles, width, height } as GameState, playerLordTile);
   adjacentTiles.forEach(tile => tile.isVisible = true);
+
+  // Set initial visibility for player2 lord and adjacent tiles
+  const player2LordTile = tiles[player2LordIndex];
+  player2LordTile.isVisible = true;
+  const player2AdjacentTiles = getAdjacentTiles({ tiles, width, height } as GameState, player2LordTile);
+  player2AdjacentTiles.forEach(tile => tile.isVisible = true);
+
+  // Create initial units for both players (lord units)
+  const player1Units = [{
+    id: uuidv4(),
+    controlledBy: player1Id,
+    position: { x: playerLordTile.x, y: playerLordTile.y },
+    armySize: playerLordTile.army,
+    owner: 'player1' as Owner
+  }];
+  const player2Units = [{
+    id: uuidv4(),
+    controlledBy: player2Id,
+    position: { x: tiles[player2LordIndex].x, y: tiles[player2LordIndex].y },
+    armySize: tiles[player2LordIndex].army,
+    owner: 'player2' as Owner
+  }];
   
   return {
+    matchId: "",
     width,
     height,
     tick: 0,
@@ -166,10 +199,12 @@ export const createNewGame = (
     selectedTile: null,
     movementQueue: [],
     minGarrison: MIN_GARRISON,
-    playerId: "",
-    playerName: "",
-    player2Id: "",
-    player2Name: ""
+    player1Id: player1Id,
+    player1Name: "",
+    player2Id: player2Id,
+    player2Name: "",
+    player1Units,
+    player2Units
   };
 };
 
@@ -324,7 +359,7 @@ export const processTick = (gameState: GameState): GameState => {
     }
 
     // Player territory grows 1 army every 20 ticks
-    if (tile.owner === 'player' && newGameState.tick % PLAYER_TERRITORY_GROWTH_INTERVAL === 0) {
+    if (tile.owner === 'player1' && newGameState.tick % PLAYER_TERRITORY_GROWTH_INTERVAL === 0) {
       newArmy += 1;
     }
     
@@ -344,22 +379,32 @@ export const processTick = (gameState: GameState): GameState => {
 };
 
 export const checkWinCondition = (gameState: GameState): void => {
-  const playerLord = gameState.tiles.find(tile => tile.isLord && tile.owner === "player");
-  const aiLord = gameState.tiles.find(tile => tile.isLord && tile.owner === "ai");
+  const player1Lord = gameState.tiles.find(tile => tile.isLord && tile.owner === "player1");
+  const player2Lord = gameState.tiles.find(tile => tile.isLord && tile.owner === "player2");
   
-  if (!playerLord) {
+  if (!player1Lord) {
     gameState.isGameOver = true;
-    gameState.winner = "ai";
-  } else if (!aiLord) {
+    gameState.winner = "player2";
+  } else if (!player2Lord) {
     gameState.isGameOver = true;
-    gameState.winner = "player";
+    gameState.winner = "player1";
   }
 };
 
 export const processMovements = (gameState: GameState): void => {
+  if (DEBUG.MOVEMENTS) {
+    console.log('=== Processing Movements ===');
+    console.log('Movement queue length:', gameState.movementQueue.length);
+  }
+  
   const { movementQueue, tiles, width } = gameState;
   
-  if (movementQueue.length === 0) return;
+  if (movementQueue.length === 0) {
+    if (DEBUG.MOVEMENTS) {
+      console.log('No movements to process');
+    }
+    return;
+  }
   
   // Process all movements in the queue
   const newMovementQueue: Movement[] = [];
@@ -368,32 +413,34 @@ export const processMovements = (gameState: GameState): void => {
   
   // First pass: process all movements and collect results
   const movementResults = movementQueue.map((movement, index) => {
-    if (processedMovements.has(index)) return null;
+    if (DEBUG.MOVEMENTS) {
+      console.log(`Processing movement ${index}:`, movement);
+    }
+    
+    if (processedMovements.has(index)) {
+      if (DEBUG.MOVEMENTS) {
+        console.log(`Movement ${index} already processed`);
+      }
+      return null;
+    }
     
     // Check if the source tile has already been moved this tick
     const sourceKey = `${movement.from.x},${movement.from.y}`;
     if (movedTiles.has(sourceKey)) {
-      // Keep the movement for next tick
+      if (DEBUG.MOVEMENTS) {
+        console.log(`Source tile ${sourceKey} already moved this tick`);
+      }
       return movement;
     }
-    
-    console.log('=== Processing Movement ===');
-    console.log('Current Movement:', {
-      from: movement.from,
-      to: movement.to,
-      finalDestination: movement.finalDestination,
-      waypoints: movement.waypoints,
-      mustReachWaypoint: movement.mustReachWaypoint,
-      isWaypoint: movement.waypoints.length > 0,
-      originalWaypoints: movement.waypoints
-    });
     
     // Get the source and destination tiles
     const fromIndex = getTileIndex(movement.from.x, movement.from.y, width);
     const toIndex = getTileIndex(movement.to.x, movement.to.y, width);
     
     if (fromIndex === -1 || toIndex === -1) {
-      console.log('Invalid tile indices, removing movement');
+      if (DEBUG.MOVEMENTS) {
+        console.log('Invalid tile indices:', { fromIndex, toIndex });
+      }
       processedMovements.add(index);
       return null;
     }
@@ -402,24 +449,59 @@ export const processMovements = (gameState: GameState): void => {
     const toTile = tiles[toIndex];
     
     if (!fromTile || !toTile) {
-      console.log('Tiles not found, removing movement');
+      if (DEBUG.MOVEMENTS) {
+        console.log('Tiles not found:', { fromTile, toTile });
+      }
       processedMovements.add(index);
       return null;
     }
 
+    // Verify tile ownership
+    const isPlayer1 = movement.playerId === gameState.player1Id;
+    const isPlayer2 = movement.playerId === gameState.player2Id;
+    const expectedOwner = isPlayer1 ? 'player1' : isPlayer2 ? 'player2' : null;
+    
+    if (fromTile.owner !== expectedOwner) {
+      if (DEBUG.MOVEMENTS) {
+        console.log('Tile not owned by player:', {
+          fromTileOwner: fromTile.owner,
+          expectedOwner,
+          isPlayer1,
+          isPlayer2,
+          playerId: movement.playerId
+        });
+      }
+      processedMovements.add(index);
+      return null;
+    }
+
+    if (DEBUG.MOVEMENTS) {
+      console.log('Processing movement between tiles:', {
+        from: { x: fromTile.x, y: fromTile.y, owner: fromTile.owner, army: fromTile.army },
+        to: { x: toTile.x, y: toTile.y, owner: toTile.owner, army: toTile.army }
+      });
+    }
+
     // Can't move to mountains
     if (toTile.isMountain) {
-      console.log('Cannot move to mountain, removing movement');
+      if (DEBUG.MOVEMENTS) {
+        console.log('Cannot move to mountain');
+      }
       processedMovements.add(index);
       return null;
     }
     
     // Resolve combat for this step
     const combatResult = resolveCombat(fromTile, toTile, movement.army, gameState);
+    if (DEBUG.MOVEMENTS) {
+      console.log('Combat result:', combatResult);
+    }
     
     // If combat was unsuccessful or army was destroyed, don't continue the movement
     if (!combatResult.success || combatResult.remainingArmy === 0) {
-      console.log('Combat unsuccessful or army destroyed, removing movement');
+      if (DEBUG.MOVEMENTS) {
+        console.log('Combat unsuccessful or army destroyed');
+      }
       processedMovements.add(index);
       return null;
     }
@@ -432,23 +514,27 @@ export const processMovements = (gameState: GameState): void => {
     
     // Check if we've reached the current destination
     if (movement.to.x === movement.finalDestination.x && movement.to.y === movement.finalDestination.y) {
-      console.log('Reached Current Destination:', {
-        position: { x: movement.to.x, y: movement.to.y },
-        remainingWaypoints: movement.waypoints.length,
-        mustReachWaypoint: movement.mustReachWaypoint,
-        isWaypoint: movement.waypoints.length > 0,
-        waypoints: movement.waypoints
-      });
+      if (DEBUG.MOVEMENTS) {
+        console.log('Reached Current Destination:', {
+          position: { x: movement.to.x, y: movement.to.y },
+          remainingWaypoints: movement.waypoints.length,
+          mustReachWaypoint: movement.mustReachWaypoint,
+          isWaypoint: movement.waypoints.length > 0,
+          waypoints: movement.waypoints
+        });
+      }
       
       // If there are more waypoints, set the next waypoint as the destination
       if (movement.waypoints.length > 0) {
         const nextWaypoint = movement.waypoints[0];
-        console.log('Setting Next Waypoint:', {
-          current: movement.finalDestination,
-          next: nextWaypoint,
-          remainingWaypoints: movement.waypoints.length - 1,
-          waypoints: movement.waypoints
-        });
+        if (DEBUG.MOVEMENTS) {
+          console.log('Setting Next Waypoint:', {
+            current: movement.finalDestination,
+            next: nextWaypoint,
+            remainingWaypoints: movement.waypoints.length - 1,
+            waypoints: movement.waypoints
+          });
+        }
         
         movement.finalDestination = getTile(gameState, nextWaypoint.x, nextWaypoint.y)!;
         movement.waypoints.shift();
@@ -456,51 +542,65 @@ export const processMovements = (gameState: GameState): void => {
         
         // Find path to next waypoint
         const nextPath = findPath(gameState, toTile, gameState.tiles[getTileIndex(nextWaypoint.x, nextWaypoint.y, width)]);
-        console.log('Path to Next Waypoint:', nextPath);
+        if (DEBUG.PATHFINDING) {
+          console.log('Path to Next Waypoint:', nextPath);
+        }
         
-        if (nextPath && nextPath.steps.length > 0) {
+        if (nextPath && nextPath.length > 0) {
           // Update movement to next step
           movement.from = getTile(gameState, movement.to.x, movement.to.y)!;
-          movement.to = getTile(gameState, nextPath.steps[0].x, nextPath.steps[0].y)!;
-          console.log('Moving to Next Waypoint:', {
-            from: movement.from,
-            to: movement.to,
-            pathLength: nextPath.steps.length,
-            mustReachWaypoint: movement.mustReachWaypoint,
-            waypoints: movement.waypoints
-          });
+          movement.to = getTile(gameState, nextPath[0].x, nextPath[0].y)!;
+          if (DEBUG.MOVEMENTS) {
+            console.log('Moving to Next Waypoint:', {
+              from: movement.from,
+              to: movement.to,
+              pathLength: nextPath.length,
+              mustReachWaypoint: movement.mustReachWaypoint,
+              waypoints: movement.waypoints
+            });
+          }
           return movement;
         } else {
-          console.log('No path found to next waypoint, removing movement');
+          if (DEBUG.MOVEMENTS) {
+            console.log('No path found to next waypoint, removing movement');
+          }
           processedMovements.add(index);
           return null;
         }
       } else {
         // No more waypoints, movement is complete
-        console.log('No more waypoints, movement complete');
+        if (DEBUG.MOVEMENTS) {
+          console.log('No more waypoints, movement complete');
+        }
         processedMovements.add(index);
         return null;
       }
     } else {
       // Find next step in path to current destination
       const nextPath = findPath(gameState, toTile, gameState.tiles[getTileIndex(movement.finalDestination.x, movement.finalDestination.y, width)]);
-      console.log('Next Path Step:', nextPath);
+      if (DEBUG.PATHFINDING) {
+        console.log('Next Path Step:', nextPath);
+      }
       
-      if (nextPath && nextPath.steps.length > 0) {
+      if (nextPath && nextPath.length > 0) {
         // Update movement to next step
         movement.from = getTile(gameState, movement.to.x, movement.to.y)!;
-        movement.to = getTile(gameState, nextPath.steps[0].x, nextPath.steps[0].y)!;
-        console.log('Moving to Next Step:', {
-          from: movement.from,
-          to: movement.to,
-          pathLength: nextPath.steps.length,
-          mustReachWaypoint: movement.mustReachWaypoint,
-          isWaypoint: movement.waypoints.length > 0,
-          waypoints: movement.waypoints
-        });
+        movement.to = getTile(gameState, nextPath[0].x, nextPath[0].y)!;
+        if (DEBUG.MOVEMENTS) {
+          console.log('Moving to Next Step:', {
+            from: movement.from,
+            to: movement.to,
+            pathLength: nextPath.length,
+            mustReachWaypoint: movement.mustReachWaypoint,
+            isWaypoint: movement.waypoints.length > 0,
+            waypoints: movement.waypoints
+          });
+        }
         return movement;
       } else {
-        console.log('No path found to current destination, removing movement');
+        if (DEBUG.MOVEMENTS) {
+          console.log('No path found to current destination, removing movement');
+        }
         processedMovements.add(index);
         return null;
       }
@@ -510,7 +610,10 @@ export const processMovements = (gameState: GameState): void => {
   // Second pass: update the movement queue with remaining movements
   gameState.movementQueue = movementResults.filter((result): result is Movement => result !== null);
   
-  console.log('=== End Movement Processing ===');
+  if (DEBUG.MOVEMENTS) {
+    console.log('Updated movement queue:', gameState.movementQueue);
+    console.log('=== End Movement Processing ===');
+  }
 };
 
 export const resolveCombat = (fromTile: Tile, toTile: Tile, movingArmy: number, gameState: GameState): { success: boolean, remainingArmy: number } => {
@@ -568,18 +671,63 @@ export const captureTerritoryTiles = (gameState: GameState, territoryId: number,
   }
 };
 
-export const isValidMove = (from: Tile, to: Tile, minGarrison: number = MIN_GARRISON): boolean => {
+export const isValidMove = (from: Tile, to: Tile, gameState: GameState, playerId: string, minGarrison: number = MIN_GARRISON): boolean => {
+  if (DEBUG.GAME_STATE) {
+    console.log('Validating move:', {
+      from: { x: from.x, y: from.y, owner: from.owner, army: from.army },
+      to: { x: to.x, y: to.y, owner: to.owner, army: to.army },
+      playerId,
+      gameStatePlayer1Id: gameState.player1Id,
+      gameStatePlayer2Id: gameState.player2Id
+    });
+  }
+
   // Can't move to mountains
-  if (to.isMountain) return false;
+  if (to.isMountain) {
+    if (DEBUG.GAME_STATE) {
+      console.log('Invalid move: Target is mountain');
+    }
+    return false;
+  }
   
   // Check if source has enough army to move (respecting min garrison)
   const availableArmy = from.owner ? from.army - minGarrison : from.army;
-  if (availableArmy <= 0) return false;
+  if (availableArmy <= 0) {
+    if (DEBUG.GAME_STATE) {
+      console.log('Invalid move: Insufficient army');
+    }
+    return false;
+  }
+
+  // Check if the player owns the tile
+  const isPlayer1 = playerId === gameState.player1Id;
+  const isPlayer2 = playerId === gameState.player2Id;
+  const expectedOwner = isPlayer1 ? 'player1' : isPlayer2 ? 'player2' : null;
+  
+  if (from.owner !== expectedOwner) {
+    if (DEBUG.GAME_STATE) {
+      console.log('Invalid move: Wrong owner', {
+        fromOwner: from.owner,
+        expectedOwner,
+        isPlayer1,
+        isPlayer2
+      });
+    }
+    return false;
+  }
   
   // For adjacent moves, return true
-  if (isAdjacent(from, to)) return true;
+  if (isAdjacent(from, to)) {
+    if (DEBUG.GAME_STATE) {
+      console.log('Valid adjacent move');
+    }
+    return true;
+  }
   
   // For non-adjacent moves, pathfinding will be used
+  if (DEBUG.GAME_STATE) {
+    console.log('Valid non-adjacent move (pathfinding will be used)');
+  }
   return true;
 };
 
@@ -637,7 +785,7 @@ export const findPath = (gameState: GameState, from: Tile, to: Tile): Path => {
   const queue: { tile: Tile, path: Path }[] = [];
   
   // Add starting tile to queue
-  queue.push({ tile: from, path: { steps: [], distance: 0, length: 0 } });
+  queue.push({ tile: from, path: [] });
   visited[from.y][from.x] = true;
   
   while (queue.length > 0) {
@@ -645,10 +793,12 @@ export const findPath = (gameState: GameState, from: Tile, to: Tile): Path => {
     
     // If we've reached the destination, return the path
     if (tile.x === to.x && tile.y === to.y) {
-      console.log('Path found:', {
-        from: { x: from.x, y: from.y },
-        to: { x: to.x, y: to.y }
-      });
+      if (DEBUG.PATHFINDING) {
+        console.log('Path found:', {
+          from: { x: from.x, y: from.y },
+          to: { x: to.x, y: to.y }
+        });
+      }
       return path;
     }
     
@@ -677,16 +827,18 @@ export const findPath = (gameState: GameState, from: Tile, to: Tile): Path => {
       visited[adjacentTile.y][adjacentTile.x] = true;
       
       // Add to queue with updated path
-      const newSteps = [...path.steps, { x: adjacentTile.x, y: adjacentTile.y }];
-      queue.push({ tile: adjacentTile, path: { steps: newSteps, distance: newSteps.length, length: newSteps.length } });
+      const newSteps = [...path, { x: adjacentTile.x, y: adjacentTile.y }];
+      queue.push({ tile: adjacentTile, path: newSteps });
     }
   }
   
-  console.log('No path found:', {
-    from: { x: from.x, y: from.y },
-    to: { x: to.x, y: to.y }
-  });
-  return { steps: [], distance: 0, length: 0 };
+  if (DEBUG.PATHFINDING) {
+    console.log('No path found:', {
+      from: { x: from.x, y: from.y },
+      to: { x: to.x, y: to.y }
+    });
+  }
+  return [];
 };
 
 export const createPathMovements = (
@@ -694,24 +846,32 @@ export const createPathMovements = (
   fromTile: Tile, 
   toTile: Tile, 
   armyPercentage: number = 1,
-  waypoints: { x: number, y: number }[] = []
+  waypoints: { x: number, y: number }[] = [],
+  playerId: string
 ): Movement[] => {
-  console.log('=== Creating Path Movements ===');
-  console.log('Start Point:', { x: fromTile.x, y: fromTile.y });
-  console.log('End Point:', { x: toTile.x, y: toTile.y });
-  console.log('Waypoints:', waypoints);
-  console.log('Army Percentage:', armyPercentage);
+  if (DEBUG.GAME_STATE) {
+    console.log('=== Creating Path Movements ===');
+    console.log('Start Point:', { x: fromTile.x, y: fromTile.y });
+    console.log('End Point:', { x: toTile.x, y: toTile.y });
+    console.log('Waypoints:', waypoints);
+    console.log('Army Percentage:', armyPercentage);
+    console.log('Player ID:', playerId);
+  }
   
   // Validate waypoints
   if (!Array.isArray(waypoints)) {
-    console.error('Waypoints must be an array');
+    if (DEBUG.GAME_STATE) {
+      console.error('Waypoints must be an array');
+    }
     waypoints = [];
   }
   
   // Get the current tile state from gameState
   const currentFromTile = gameState.tiles.find(t => t.x === fromTile.x && t.y === fromTile.y);
   if (!currentFromTile) {
-    console.log('Source tile not found in game state');
+    if (DEBUG.GAME_STATE) {
+      console.log('Source tile not found in game state');
+    }
     return [];
   }
   
@@ -722,53 +882,66 @@ export const createPathMovements = (
   }
   
   if (armyToMove <= 0) {
-    console.log('No army to move, returning empty movements');
+    if (DEBUG.GAME_STATE) {
+      console.log('No army to move, returning empty movements');
+    }
     return [];
   }
 
   // If there are waypoints, we MUST go to the first waypoint first
   // Only after reaching all waypoints do we proceed to the final destination
   const initialDestination = waypoints.length > 0 ? waypoints[0] : { x: toTile.x, y: toTile.y };
-  console.log('Initial Destination:', initialDestination);
+  if (DEBUG.GAME_STATE) {
+    console.log('Initial Destination:', initialDestination);
+  }
   
   // The remaining waypoints (if any) plus the final destination
   const remainingWaypoints = waypoints.length > 0 
     ? [...waypoints.slice(1), { x: toTile.x, y: toTile.y }]
     : [];
-  console.log('Remaining Waypoints:', remainingWaypoints);
+  if (DEBUG.GAME_STATE) {
+    console.log('Remaining Waypoints:', remainingWaypoints);
+  }
 
   // Find initial path to first destination
   const initialPath = findPath(gameState, currentFromTile, gameState.tiles[getTileIndex(initialDestination.x, initialDestination.y, gameState.width)]);
-  console.log('Initial Path:', initialPath);
+  if (DEBUG.PATHFINDING) {
+    console.log('Initial Path:', initialPath);
+  }
   
-  if (initialPath.steps.length === 0) {
-    console.log('No path found to initial destination, returning empty movements');
+  if (initialPath.length === 0) {
+    if (DEBUG.GAME_STATE) {
+      console.log('No path found to initial destination, returning empty movements');
+    }
     return [];
   }
 
   // Create a single movement for the next tile only
   const movement: Movement = {
     from: currentFromTile,
-    to: gameState.tiles[getTileIndex(initialPath.steps[0].x, initialPath.steps[0].y, gameState.width)],
+    to: gameState.tiles[getTileIndex(initialPath[0].x, initialPath[0].y, gameState.width)],
+    owner: currentFromTile.owner,
     army: armyToMove,
     finalDestination: gameState.tiles[getTileIndex(initialDestination.x, initialDestination.y, gameState.width)],
     waypoints: remainingWaypoints,
     mustReachWaypoint: waypoints.length > 0,
-    armyPercentage,
-    startTick: 0,
-    endTick: 0
+    playerId
   };
 
-  console.log('Created Movement:', {
-    movement,
-    totalArmy: movement.army,
-    remainingWaypoints,
-    initialPathLength: initialPath.steps.length,
-    mustReachWaypoint: waypoints.length > 0,
-    waypoints: waypoints,
-    sourceTileArmy: currentFromTile.army
-  });
-  console.log('=== End Path Creation ===');
+  if (DEBUG.GAME_STATE) {
+    console.log('Created Movement:', {
+      movement,
+      totalArmy: movement.army,
+      remainingWaypoints,
+      initialPathLength: initialPath.length,
+      mustReachWaypoint: waypoints.length > 0,
+      waypoints: waypoints,
+      sourceTileArmy: currentFromTile.army
+    });
+  }
+  if (DEBUG.GAME_STATE) {
+    console.log('=== End Path Creation ===');
+  }
 
   return [movement];
 };
@@ -776,33 +949,28 @@ export const createPathMovements = (
 export const createMovement = (
   fromTile: Tile, 
   toTile: Tile, 
-  armyPercentage: number = 1,
+  gameState: GameState,
+  playerId: string,
+  armiesToMove: number,
   minGarrison: number = MIN_GARRISON
 ): Movement | null => {
-  if (!isValidMove(fromTile, toTile, minGarrison)) {
+  if (!isValidMove(fromTile, toTile, gameState, playerId, minGarrison)) {
     return null;
   }
   
-  // Calculate army that can move (respecting min garrison)
-  let armyToMove = Math.floor(fromTile.army * armyPercentage);
-  if (fromTile.owner) {
-    armyToMove = Math.max(0, Math.min(armyToMove, fromTile.army - minGarrison));
-  }
-  
-  if (armyToMove <= 0) {
-    return null;
-  }
+  // Validate that the requested number of armies is valid
+  const maxArmiesToMove = fromTile.army - minGarrison;
+  const actualArmiesToMove = Math.min(armiesToMove, maxArmiesToMove);
   
   return {
     from: fromTile,
     to: toTile,
-    army: armyToMove,
+    owner: fromTile.owner as Owner,
+    army: actualArmiesToMove,
     finalDestination: toTile,
     waypoints: [],
     mustReachWaypoint: false,
-    armyPercentage,
-    startTick: 0,
-    endTick: 0
+    playerId
   };
 };
 
@@ -843,10 +1011,68 @@ export const updateVisibility = (gameState: GameState): void => {
   
   // Then, make player-owned tiles and their adjacent tiles visible
   tiles.forEach(tile => {
-    if (tile.owner === 'player') {
+    if (tile.owner === 'player1') {
       tile.isVisible = true;
       const adjacentTiles = getAdjacentTiles(gameState, tile);
       adjacentTiles.forEach(adjacentTile => adjacentTile.isVisible = true);
     }
   });
 };
+
+// Game loop management
+export class GameManager {
+  private tickInterval: NodeJS.Timeout | null = null;
+  private gameState: GameState;
+  private tickSpeed: TickSpeed = 1000;
+
+  constructor(
+    private matchId: string,
+    private player1Id: string,
+    private player2Id: string,
+    private player1Name: string,
+    private player2Name: string,
+    private io: Server
+  ) {
+    this.gameState = createNewGame(30, 30, player1Id, player2Id);
+    this.startGameLoop();
+  }
+
+  private processMovements() {
+    if (this.gameState.movementQueue.length > 0) {
+      if (DEBUG.MOVEMENTS) {
+        console.log('=== Processing Movements ===');
+        console.log('Movement queue length:', this.gameState.movementQueue.length);
+      }
+      processMovements(this.gameState);
+    }
+  }
+
+  private startGameLoop() {
+    if (this.tickInterval) {
+      clearInterval(this.tickInterval);
+    }
+    
+    this.tickInterval = setInterval(() => {
+      this.gameState = processTick(this.gameState);
+      this.processMovements();
+    }, this.tickSpeed);
+  }
+
+  public setSpeed(speed: TickSpeed) {
+    this.tickSpeed = speed;
+    this.gameState = setTickSpeed(this.gameState, speed);
+    this.startGameLoop(); // Restart loop with new speed
+  }
+
+  public togglePause() {
+    this.gameState = togglePause(this.gameState);
+  }
+
+  public enqueueMovement(movement: Movement) {
+    this.gameState = enqueueMoves(this.gameState, [movement]);
+  }
+
+  public getGameState(): GameState {
+    return this.gameState;
+  }
+}

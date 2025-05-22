@@ -1,4 +1,4 @@
-import { Tile } from "../types/game";
+import { Tile } from "../../../shared/types/game";
 
 interface SupplyLineButton {
   x: number;

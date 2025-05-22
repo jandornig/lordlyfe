@@ -34,10 +34,18 @@ const GameContent: React.FC = () => {
       setGameStarted(true);
     });
 
+    // Listen for game ended
+    socket.on('game-ended', () => {
+      setCurrentState('matchmaking');
+      setGameStarted(false);
+      setLoadingMessage('Waiting for opponent...');
+    });
+
     return () => {
       socket.off('queue-status');
       socket.off('match-found');
       socket.off('game-started');
+      socket.off('game-ended');
     };
   }, []);
   

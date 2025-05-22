@@ -13,6 +13,7 @@ const GameGrid: React.FC = () => {
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
   const [startPanPos, setStartPanPos] = useState({ x: 0, y: 0 });
   const [hasPanned, setHasPanned] = useState(false);
+  const [dragDistance, setDragDistance] = useState(0);
   const gridRef = useRef<HTMLDivElement>(null);
   
   // State for zooming
@@ -67,6 +68,7 @@ const GameGrid: React.FC = () => {
     if (e.button === 0) { // Left mouse button
       setIsPanning(true);
       setHasPanned(false);
+      setDragDistance(0);
       setStartPanPos({
         x: e.clientX - panPosition.x,
         y: e.clientY - panPosition.y,
@@ -80,8 +82,14 @@ const GameGrid: React.FC = () => {
     const newX = e.clientX - startPanPos.x;
     const newY = e.clientY - startPanPos.y;
     
+    // Calculate drag distance
+    const dx = Math.abs(newX - panPosition.x);
+    const dy = Math.abs(newY - panPosition.y);
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    setDragDistance(distance);
+    
     // Check if we've actually moved the grid
-    if (Math.abs(newX - panPosition.x) > 1 || Math.abs(newY - panPosition.y) > 1) {
+    if (distance > 5) { // Increased threshold for pan detection
       setHasPanned(true);
     }
     
@@ -90,6 +98,10 @@ const GameGrid: React.FC = () => {
   
   const handleMouseUp = () => {
     setIsPanning(false);
+    // Reset drag distance after a short delay to allow click events to process
+    setTimeout(() => {
+      setDragDistance(0);
+    }, 100);
   };
   
   // Handle wheel events for zooming
@@ -154,7 +166,7 @@ const GameGrid: React.FC = () => {
           <TileComponent
             key={`${tile.x},${tile.y}`}
             tile={tile}
-            disablePropagation={isPanning || hasPanned}
+            disablePropagation={isPanning || hasPanned || dragDistance > 5}
           />
         ))}
       </div>

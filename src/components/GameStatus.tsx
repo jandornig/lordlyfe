@@ -3,42 +3,49 @@ import { useGame } from '@/contexts/GameContext';
 import { GAME_VERSION } from '@/lib/constants';
 
 const GameStatus: React.FC = () => {
-  const { gameState } = useGame();
+  const { gameState, playerRole } = useGame();
   
   // Count army totals for each player
   const armyTotals = gameState.tiles.reduce(
     (acc, tile) => {
-      if (tile.owner === 'player') {
-        acc.player += tile.army;
-      } else if (tile.owner === 'ai') {
-        acc.ai += tile.army;
+      if (tile.owner === 'player1') {
+        acc.player1 += tile.army;
+      } else if (tile.owner === 'player2') {
+        acc.player2 += tile.army;
       }
       return acc;
     },
-    { player: 0, ai: 0 }
+    { player1: 0, player2: 0 }
   );
   
   // Count territory tiles for each player
   const territoryCount = gameState.tiles.reduce(
     (acc, tile) => {
-      if (tile.owner === 'player') {
-        acc.player += 1;
-      } else if (tile.owner === 'ai') {
-        acc.ai += 1;
+      if (tile.owner === 'player1') {
+        acc.player1 += 1;
+      } else if (tile.owner === 'player2') {
+        acc.player2 += 1;
       }
       return acc;
     },
-    { player: 0, ai: 0 }
+    { player1: 0, player2: 0 }
   );
+  
+  // Determine which stats to show based on player role
+  const isPlayer1 = playerRole === 'player1';
+  const myArmy = isPlayer1 ? armyTotals.player1 : armyTotals.player2;
+  const myTerritory = isPlayer1 ? territoryCount.player1 : territoryCount.player2;
+  const opponentArmy = isPlayer1 ? armyTotals.player2 : armyTotals.player1;
+  const opponentTerritory = isPlayer1 ? territoryCount.player2 : territoryCount.player1;
   
   return (
     <div className="flex justify-between items-center bg-gray-800 rounded-md p-4 text-sm gap-4">
       <div className="grid grid-cols-2 gap-x-6 gap-y-1">
         <div className="text-player font-semibold">Your Army:</div>
-        <div className="text-right">{armyTotals.player}</div>
+        <div className="text-right">{myArmy}</div>
         
         <div className="text-player font-semibold">Your Territory:</div>
-        <div className="text-right">{territoryCount.player}</div>
+        <div className="text-right">{myTerritory}</div>
       </div>
       
       <div className="text-center">
@@ -48,11 +55,11 @@ const GameStatus: React.FC = () => {
       </div>
       
       <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-        <div className="text-opponent font-semibold">AI Army:</div>
-        <div className="text-right">{armyTotals.ai}</div>
+        <div className="text-opponent font-semibold">Player 2:</div>
+        <div className="text-right">{opponentArmy}</div>
         
-        <div className="text-opponent font-semibold">AI Territory:</div>
-        <div className="text-right">{territoryCount.ai}</div>
+        <div className="text-opponent font-semibold">Player 2 Territory:</div>
+        <div className="text-right">{opponentTerritory}</div>
       </div>
     </div>
   );

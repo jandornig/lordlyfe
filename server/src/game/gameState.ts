@@ -1,6 +1,6 @@
 import { GameState, Owner, Tile, Movement, Player } from '../../../shared/types/game'; // Added Player
-import { createNewGame, processMovements, processTick } from './gameLogic'; // Removed createPathMovements
-import { createPathMovements } from './movementLogic'; // Added import from movementLogic
+import { createNewGame, processTick } from './gameLogic'; // Removed processMovements
+import { processMovements, createPathMovements } from './movementLogic'; // Added processMovements here
 import { io } from '../index';
 
 // Define DEBUG constant locally for now

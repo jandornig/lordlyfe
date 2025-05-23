@@ -64,7 +64,7 @@ export const createNewGame = (
     getTileFunc: getTile
   };
 
-  const initialGameParts = setupNewGGame(width, height, playersInfo, gameSetupConstants);
+  const initialGameParts = setupNewGame(width, height, playersInfo, gameSetupConstants); // Corrected typo
   
   return {
     matchId: matchIdToSet,
@@ -170,7 +170,8 @@ export const checkWinCondition = (gameState: GameState): void => {
   }
 };
 
-// processMovements, isValidMove, isAdjacent, findPath, createPathMovements, createMovement were moved to movementLogic.ts
+// processMovements was moved to movementLogic.ts
+// isValidMove, isAdjacent, findPath, createPathMovements, createMovement were also moved.
 
 export const resolveCombat = (fromTile: Tile, toTile: Tile, movingArmy: number, gameState: GameState): { success: boolean, remainingArmy: number } => {
   const { minGarrison, tiles } = gameState;
@@ -227,61 +228,7 @@ export const captureTerritoryTiles = (gameState: GameState, territoryId: number,
   }
 };
 
-export const isValidMove = (from: Tile, to: Tile, gameState: GameState, playerId: string, minGarrison: number = MIN_GARRISON): boolean => {
-  if (DEBUG.GAME_STATE) {
-    console.log('Validating move:', {
-      from: { x: from.x, y: from.y, owner: from.owner, army: from.army },
-      to: { x: to.x, y: to.y, owner: to.owner, army: to.army },
-      playerId,
-      // gameStatePlayer1Id and gameStatePlayer2Id are no longer direct properties of gameState
-      // Player IDs are now in gameState.players.map(p => p.id)
-    });
-  }
-
-  // Can't move to mountains
-  if (to.isMountain) {
-    if (DEBUG.GAME_STATE) {
-      console.log('Invalid move: Target is mountain');
-    }
-    return false;
-  }
-  
-  // Check if source has enough army to move (respecting min garrison)
-  const availableArmy = from.owner ? from.army - minGarrison : from.army;
-  if (availableArmy <= 0) {
-    if (DEBUG.GAME_STATE) {
-      console.log('Invalid move: Insufficient army');
-    }
-    return false;
-  }
-
-  // Check if the player owns the tile
-  // 'playerId' is the ID of the player attempting the move.
-  // 'from.owner' is the ID of the player who owns the source tile.
-  if (from.owner !== playerId) {
-    if (DEBUG.GAME_STATE) {
-      console.log('Invalid move: Tile not owned by player', {
-        fromOwner: from.owner,
-        expectedOwner: playerId,
-      });
-    }
-    return false;
-  }
-  
-  // For adjacent moves, return true
-  if (isAdjacent(from, to)) {
-    if (DEBUG.GAME_STATE) {
-      console.log('Valid adjacent move');
-    }
-    return true;
-  }
-  
-  // For non-adjacent moves, pathfinding will be used
-  if (DEBUG.GAME_STATE) {
-    console.log('Valid non-adjacent move (pathfinding will be used)');
-  }
-  return true;
-};
+// isValidMove was moved to movementLogic.ts
 
 // isAdjacent was moved to movementLogic.ts
 
@@ -322,70 +269,8 @@ export const getAdjacentTiles = (gameState: GameState, tile: Tile): Tile[] => {
     .filter((tile): tile is Tile => tile !== null);
 };
 
-export const findPath = (gameState: GameState, from: Tile, to: Tile): Path => {
-  // Breadth-first search implementation for pathfinding
-  const { width, height } = gameState;
-  
-  // Initialize visited array and queue
-  const visited: boolean[][] = Array(height).fill(null).map(() => Array(width).fill(false));
-  const queue: { tile: Tile, path: any[] }[] = []; // Path type might need to be any if PathStep is not imported
-  
-  // Add starting tile to queue
-  queue.push({ tile: from, path: [] });
-  visited[from.y][from.x] = true;
-  
-  while (queue.length > 0) {
-    const { tile, path } = queue.shift()!;
-    
-    // If we've reached the destination, return the path
-    if (tile.x === to.x && tile.y === to.y) {
-      if (DEBUG.PATHFINDING) {
-        console.log('Path found:', {
-          from: { x: from.x, y: from.y },
-          to: { x: to.x, y: to.y }
-        });
-      }
-      return path;
-    }
-    
-    // Get adjacent tiles (only horizontal and vertical)
-    const adjacentPositions = [
-      { x: tile.x, y: tile.y - 1 }, // Up
-      { x: tile.x, y: tile.y + 1 }, // Down
-      { x: tile.x - 1, y: tile.y }, // Left
-      { x: tile.x + 1, y: tile.y }  // Right
-    ].filter(pos => 
-      pos.x >= 0 && pos.x < width && 
-      pos.y >= 0 && pos.y < height
-    );
-    
-    const adjacentTiles = adjacentPositions
-      .map(pos => getTile(gameState, pos.x, pos.y))
-      .filter((tile): tile is Tile => tile !== null);
-    
-    for (const adjacentTile of adjacentTiles) {
-      // Skip mountains and already visited tiles
-      if (adjacentTile.isMountain || visited[adjacentTile.y][adjacentTile.x]) {
-        continue;
-      }
-      
-      // Mark as visited
-      visited[adjacentTile.y][adjacentTile.x] = true;
-      
-      // Add to queue with updated path
-      const newSteps = [...path, { x: adjacentTile.x, y: adjacentTile.y }];
-      queue.push({ tile: adjacentTile, path: newSteps });
-    }
-  }
-  
-  if (DEBUG.PATHFINDING) {
-    console.log('No path found:', {
-      from: { x: from.x, y: from.y },
-      to: { x: to.x, y: to.y }
-    });
-  }
-  return [];
-};
+// findPath was moved to movementLogic.ts
+// Path and PathStep types are also implicitly removed by not being used here.
 
 // createPathMovements was moved to movementLogic.ts
 

@@ -1,5 +1,5 @@
-import { GameState, Tile, StateUpdate } from '../../../shared/types/game';
-import { versionManager } from './versionManager';
+import { GameState, Tile } from '../../../shared/types/game'; // StateUpdate removed
+// import { versionManager } from './versionManager'; // Commented out
 
 interface StateValidationResult {
   isValid: boolean;
@@ -88,8 +88,9 @@ class ServerStateReconciliation {
     });
 
     // Validate player units
-    if (!Array.isArray(state.player1Units) || !Array.isArray(state.player2Units)) {
-      errors.push('Invalid player units arrays');
+    // Changed to reflect the new GameState structure with state.units and state.players
+    if (!Array.isArray(state.units) || !Array.isArray(state.players) || state.players.length === 0) {
+      errors.push('Invalid units or players array, or no players defined');
     }
 
     // Validate game boundaries
@@ -141,7 +142,8 @@ class ServerStateReconciliation {
   /**
    * Creates a state update with validation
    */
-  createValidatedStateUpdate(state: GameState): StateUpdate | null {
+  // createValidatedStateUpdate(state: GameState): StateUpdate | null { // StateUpdate type is no longer imported
+  createValidatedStateUpdate(state: GameState): any | null { // Changed return type to any
     const validation = this.validateState(state);
     
     if (!validation.isValid) {
@@ -149,10 +151,13 @@ class ServerStateReconciliation {
       return null;
     }
 
-    const stateUpdate = versionManager.createStateUpdate(state);
-    this.storeState(stateUpdate.version, state);
+    // const stateUpdate = versionManager.createStateUpdate(state); // versionManager usage commented out
+    // this.storeState(stateUpdate.version, state); // versionManager usage commented out
     
-    return stateUpdate;
+    // return stateUpdate; // versionManager usage commented out
+    console.warn("versionManager functionality is commented out. Returning basic state for now.");
+    this.storeState(state.tick, state); // Store by tick as a temporary measure
+    return { version: state.tick, state }; // Return a placeholder
   }
 
   /**
@@ -192,15 +197,12 @@ class ServerStateReconciliation {
       }
     });
 
-    // Compare player units
-    ['player1Units', 'player2Units'].forEach(unitKey => {
-      const oldUnits = oldState[unitKey as keyof GameState] as any[];
-      const newUnits = newState[unitKey as keyof GameState] as any[];
-      
-      if (oldUnits.length !== newUnits.length) {
-        errors.push(`${unitKey} count mismatch: ${oldUnits.length} vs ${newUnits.length}`);
-      }
-    });
+    // Compare player units (now a single state.units array)
+    if (oldState.units.length !== newState.units.length) {
+      errors.push(`Units count mismatch: ${oldState.units.length} vs ${newState.units.length}`);
+    }
+    // Further unit comparison logic would go here if needed, e.g., checking individual unit properties
+    // For now, just checking length to align with previous superficial check on player1Units/player2Units length.
 
     return {
       isValid: errors.length === 0 && mismatches.tiles.length === 0 && mismatches.units.length === 0,

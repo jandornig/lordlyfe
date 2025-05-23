@@ -3,7 +3,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { gameStateManager } from './game/gameState';
-import { createPathMovements } from './game/gameLogic';
+// import { createPathMovements } from './game/gameLogic'; // Removed as it's no longer directly used
 import { matchmakingQueue } from './game/matchmaking';
 import { Tile, GameState } from '../../shared/types/game';
 import { v4 as uuidv4 } from 'uuid';
@@ -155,18 +155,10 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const gameState = gameStateManager.getGameState();
-    if (gameState.player1Id !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
-      logEvent('ERROR', {
-        type: 'MOVE_ARMY_PLAYER_NOT_IN_MATCH',
-        socketId: socket.id,
-        playerId: actingPlayerId,
-        matchId: matchId
-      });
-      return;
-    }
+    // The validation for player being in the match is now inside handlePlayerMovementRequest
+    // gameStateManager.getGameState() is no longer needed here directly for that check.
 
-    if (DEBUG.MOVEMENTS) {
+    if (DEBUG.MOVEMENTS) { // DEBUG is defined in index.ts
       logEvent('MOVE_ARMY_REQUEST', {
         socketId: socket.id,
         playerId: actingPlayerId,
@@ -181,45 +173,8 @@ io.on('connection', (socket) => {
     }
 
     try {
-      // Process each movement
-      for (const movement of data.movements) {
-        const fromTile = gameState.tiles.find((t: Tile) => t.x === movement.from.x && t.y === movement.from.y);
-        const toTile = gameState.tiles.find((t: Tile) => t.x === movement.to.x && t.y === movement.to.y);
-        
-        if (!fromTile || !toTile) {
-          logEvent('ERROR', {
-            type: 'MOVE_ARMY_TILES_NOT_FOUND',
-            from: movement.from,
-            to: movement.to
-          });
-          continue;
-        }
-        
-        // Create path movements
-        const pathMovements = createPathMovements(
-          gameState,
-          fromTile,
-          toTile,
-          movement.armiesToMove,
-          movement.waypoints || [],
-          actingPlayerId
-        );
-        
-        if (pathMovements && pathMovements.length > 0) {
-          gameState.movementQueue.push(...pathMovements);
-          if (DEBUG.MOVEMENTS) {
-            logEvent('MOVEMENT_QUEUED', {
-              queueLength: gameState.movementQueue.length,
-              pathMovements: pathMovements.map(m => ({
-                from: { x: m.from.x, y: m.from.y },
-                to: { x: m.to.x, y: m.to.y },
-                army: m.army,
-                playerId: m.playerId
-              }))
-            });
-          }
-        }
-      }
+      gameStateManager.handlePlayerMovementRequest(actingPlayerId, data.movements);
+      // The logging of MOVEMENT_QUEUED is now inside handlePlayerMovementRequest
     } catch (error) {
       let errorMsg = '';
       if (error && typeof error === 'object' && 'message' in error) {
@@ -250,7 +205,8 @@ io.on('connection', (socket) => {
       return;
     }
     const gameState = gameStateManager.getGameState();
-    if (gameState.player1Id !== actingPlayerId && gameState.player2Id !== actingPlayerId) {
+    // Updated player validation for N players
+    if (!gameState.players.some(p => p.id === actingPlayerId)) {
       logEvent('ERROR', {
         type: 'TOGGLE_PAUSE_PLAYER_NOT_IN_MATCH',
         socketId: socket.id,
@@ -280,10 +236,23 @@ io.on('connection', (socket) => {
     }
 
     // Get the player ID based on the socket
+    const actingPlayerId = socketPlayerMap.get(socket.id);
+    if (!actingPlayerId) {
+      logEvent('ERROR', { type: 'CLEAR_QUEUE_PLAYER_ID_NOT_FOUND', socketId: socket.id });
+      return;
+    }
+    
     const gameState = gameStateManager.getGameState();
-    const actingPlayerId = socket.id === gameState.player1Id ? 
-      gameState.player1Id : 
-      gameState.player2Id;
+    // Further validation if needed:
+    if (!gameState.players.some(p => p.id === actingPlayerId)) {
+        logEvent('ERROR', { 
+            type: 'CLEAR_QUEUE_PLAYER_NOT_IN_MATCH',
+            socketId: socket.id,
+            playerId: actingPlayerId,
+            matchId: matchId 
+        });
+        return;
+    }
 
     gameStateManager.clearMovementQueue(actingPlayerId);
   });

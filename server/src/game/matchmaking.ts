@@ -11,7 +11,7 @@ interface QueuedPlayer {
 
 class MatchmakingQueue {
   private queue: QueuedPlayer[] = [];
-  private readonly MIN_PLAYERS = 2;
+  private readonly PLAYERS_PER_MATCH = 3; // Changed from MIN_PLAYERS = 2
   private readonly MIN_WAIT_TIME = 1000; // 1 second minimum wait time
 
   constructor() {
@@ -35,56 +35,55 @@ class MatchmakingQueue {
   }
 
   private async processQueue() {
-    if (this.queue.length >= this.MIN_PLAYERS) {
-      // Get the first two players
-      const player1 = this.queue.shift()!;
-      const player2 = this.queue.shift()!;
+    if (this.queue.length >= this.PLAYERS_PER_MATCH) {
+      const playersForMatch: QueuedPlayer[] = [];
+      for (let i = 0; i < this.PLAYERS_PER_MATCH; i++) {
+        playersForMatch.push(this.queue.shift()!);
+      }
 
       const matchId = uuidv4();
-      console.log(`Match found: ${matchId}`, { player1, player2 });
+      console.log(`Match found: ${matchId}`, { players: playersForMatch.map(p => p.playerId) });
 
-      // Have players join the room
-      const socket1 = io.sockets.sockets.get(player1.socketId);
-      const socket2 = io.sockets.sockets.get(player2.socketId);
+      const socketsForMatch: any[] = []; // Store socket objects
+      let allSocketsFound = true;
+      for (const p of playersForMatch) {
+        const socket = io.sockets.sockets.get(p.socketId);
+        if (socket) {
+          socketsForMatch.push(socket);
+        } else {
+          console.error(`Socket not found for player ${p.playerId}`);
+          allSocketsFound = false;
+          break;
+        }
+      }
 
-      if (socket1) {
-        socket1.join(matchId);
-        socketMatchMap.set(socket1.id, matchId);
-        console.log(`Player ${player1.playerId} (socket ${player1.socketId}) joined match room ${matchId}`);
-        // Inform server logic of match membership
-        socket1.emit('join-match-room', { matchId });
-      } else {
-        console.error(`Socket not found for player ${player1.playerId}`);
-        if (player2) this.queue.unshift(player2);
+      if (!allSocketsFound) {
+        // Add players back to the front of the queue in their original order
+        // Reverse playersForMatch before unshift to maintain original order at the front
+        this.queue.unshift(...playersForMatch.reverse()); 
+        console.log('Failed to find all sockets for match, players requeued.');
         return;
       }
 
-      if (socket2) {
-        socket2.join(matchId);
-        socketMatchMap.set(socket2.id, matchId);
-        console.log(`Player ${player2.playerId} (socket ${player2.socketId}) joined match room ${matchId}`);
-        // Inform server logic of match membership
-        socket2.emit('join-match-room', { matchId });
-      } else {
-        console.error(`Socket not found for player ${player2.playerId}`);
-        socket1.leave(matchId);
-        socketMatchMap.delete(socket1.id);
-        this.queue.unshift(player1);
-        return;
-      }
+      socketsForMatch.forEach((socket, index) => {
+        const player = playersForMatch[index];
+        socket.join(matchId);
+        socketMatchMap.set(socket.id, matchId);
+        console.log(`Player ${player.playerId} (socket ${socket.id}) joined match room ${matchId}`);
+        socket.emit('join-match-room', { matchId });
+      });
+      
+      const playersInfo = playersForMatch.map(p => ({ id: p.playerId, name: p.playerName }));
 
-      // Start the game with both players, including matchId
+      // Start the game with all players, including matchId
       const gameState = gameStateManager.initializeGame(
         matchId,
-        30, 
-        30, 
-        player1.playerId, 
-        player1.playerName,
-        player2.playerId,
-        player2.playerName
+        30, // Default width
+        30, // Default height
+        playersInfo // Pass the array of player info
       );
       
-      // Notify both players that game is starting (SHOULD NOW BE SENT TO ROOM)
+      // Notify all players in the room that game is starting
       // This will be handled by gameStateManager.initializeGame broadcasting to the room
       // io.to(player1.socketId).emit('game-started', gameState);
       // io.to(player2.socketId).emit('game-started', gameState);

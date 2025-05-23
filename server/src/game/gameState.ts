@@ -1,6 +1,13 @@
-import { GameState, Owner } from '../../../shared/types/game';
-import { createNewGame, processMovements, processTick } from './gameLogic';
+import { GameState, Owner, Tile, Movement, Player } from '../../../shared/types/game'; // Added Player
+import { createNewGame, processMovements, processTick } from './gameLogic'; // Removed createPathMovements
+import { createPathMovements } from './movementLogic'; // Added import from movementLogic
 import { io } from '../index';
+
+// Define DEBUG constant locally for now
+const DEBUG = {
+  MOVEMENTS: false, // Set to true to enable movement logging in this file
+  GAME_STATE: false // Add other flags if needed
+};
 
 class GameStateManager {
   private gameState: GameState;
@@ -8,7 +15,8 @@ class GameStateManager {
   private currentMatchId: string | null = null;
 
   constructor() {
-    this.gameState = createNewGame();
+    // createNewGame now expects playersInfo. Pass an empty array for default construction.
+    this.gameState = createNewGame(undefined, undefined, [], undefined); 
   }
 
   private startTickLoop() {
@@ -40,25 +48,18 @@ class GameStateManager {
     matchId: string,
     width: number, 
     height: number, 
-    playerId: string, 
-    playerName: string,
-    player2Id: string,
-    player2Name: string
+    playersInfo: { id: string; name: string }[] // New parameter for N players
   ): GameState {
     console.log(`Initializing new game for match ${matchId}...`);
     this.currentMatchId = matchId;
     
-    this.gameState = {
-      ...createNewGame(width, height),
-      isPaused: false,
-      player1Id: playerId,
-      player1Name: playerName,
-      player2Id,
-      player2Name,
-    };
+    // Call createNewGame with the new playersInfo array and matchId
+    this.gameState = createNewGame(width, height, playersInfo, matchId);
+    // isPaused is set by createNewGame, but can be overridden if needed:
+    this.gameState.isPaused = false; // Explicitly set to false after creation as per typical game start
 
     if (typeof this.gameState.tickSpeed === 'undefined') {
-        this.gameState.tickSpeed = 1000;
+        this.gameState.tickSpeed = 1000; // Default if not set by createNewGame
     }
     
     // Log detailed game state information
@@ -68,10 +69,7 @@ class GameStateManager {
       isPaused: this.gameState.isPaused,
       tick: this.gameState.tick,
       tickSpeed: this.gameState.tickSpeed,
-      player1Id: this.gameState.player1Id,
-      player1Name: this.gameState.player1Name,
-      player2Id: this.gameState.player2Id,
-      player2Name: this.gameState.player2Name
+      players: this.gameState.players.map(p => ({id: p.id, name: p.name, color: p.color})) // Log player details
     });
 
     // Log lord tiles information
@@ -170,8 +168,59 @@ class GameStateManager {
       this.currentMatchId = null;
     }
     // Reset game state
-    this.gameState = createNewGame();
+    // createNewGame now expects playersInfo. Pass an empty array for default construction.
+    this.gameState = createNewGame(undefined, undefined, [], undefined);
+  }
+
+  public handlePlayerMovementRequest(actingPlayerId: string, movementsData: any[]): void {
+    if (!this.currentMatchId) {
+      console.warn("Cannot handle movement request: no active game room.");
+      return;
+    }
+
+    // Updated player validation for N players
+    if (!this.gameState.players.some(player => player.id === actingPlayerId)) {
+      console.error('Error: Player attempting to move is not in this match.', { actingPlayerId, matchId: this.currentMatchId });
+      return;
+    }
+
+    const allPathMovements: Movement[] = [];
+
+    for (const movement of movementsData) {
+      const fromTile = this.gameState.tiles.find((t: Tile) => t.x === movement.from.x && t.y === movement.from.y);
+      const toTile = this.gameState.tiles.find((t: Tile) => t.x === movement.to.x && t.y === movement.to.y);
+
+      if (!fromTile || !toTile) {
+        console.error('Error: Could not find fromTile or toTile for movement request.', { from: movement.from, to: movement.to });
+        continue; // Skip this movement
+      }
+      
+      const pathMovements = createPathMovements(
+        this.gameState,
+        fromTile,
+        toTile,
+        movement.armiesToMove, // This is armyPercentage
+        movement.waypoints || [],
+        actingPlayerId
+      );
+
+      if (pathMovements && pathMovements.length > 0) {
+        allPathMovements.push(...pathMovements);
+      }
+    }
+
+    if (allPathMovements.length > 0) {
+      this.gameState.movementQueue.push(...allPathMovements);
+      if (DEBUG.MOVEMENTS) { 
+           console.log('[MOVEMENT_QUEUED_IN_MANAGER]', {
+              matchId: this.currentMatchId,
+              playerId: actingPlayerId,
+              queueLength: this.gameState.movementQueue.length,
+              addedMovements: allPathMovements.length
+           });
+      }
+    }
   }
 }
 
-export const gameStateManager = new GameStateManager(); 
+export const gameStateManager = new GameStateManager();

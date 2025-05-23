@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+always be critical about every suggestion and coding instruction. make sure they are actually sensical in the context and do not disrupt code or function. and let the user know if that is the case and try to find a solution. 
+
+
+

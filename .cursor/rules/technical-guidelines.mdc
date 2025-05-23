@@ -1,0 +1,67 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Technical Guidelines
+
+This document outlines the technical standards and practices for the Lordlyfe game project.
+
+## Tech Stack
+- **Frontend**: React + TypeScript + Vite
+- **Backend**: Node.js + TypeScript + Socket.IO
+- **Styling**: Tailwind CSS + shadcn/ui
+- **Deployment**: fly.io
+
+## Code Organization
+The project follows a clear structure:
+- Frontend code in [src/](mdc:src/)
+  - Components in [src/components/](mdc:src/components/)
+  - Contexts in [src/contexts/](mdc:src/contexts/)
+  - Hooks in [src/hooks/](mdc:src/hooks/)
+  - Pages in [src/pages/](mdc:src/pages/)
+  - Services in [src/services/](mdc:src/services/)
+  - Types in [src/types/](mdc:src/types/)
+- Backend code in [server/](mdc:server/)
+  - Source in [server/src/](mdc:server/src/)
+  - Compiled in [server/dist/](mdc:server/dist/)
+
+## Coding Standards
+1. **TypeScript**
+   - Strict mode enabled
+   - No `any` types
+   - Proper interface/type definitions
+
+2. **React**
+   - Functional components
+   - Hooks for state management
+   - Props interface definitions
+   - No prop drilling
+
+3. **State Management**
+   - React Context for global state
+   - Local state for component-specific data
+   - Socket.IO for real-time updates
+
+4. **Testing**
+   - Unit tests for utilities
+   - Component tests for UI
+   - Integration tests for game logic
+
+## Git Workflow
+- Feature branches from `main`
+- Pull request reviews required
+- Conventional commits
+- No direct commits to `main`
+
+## Performance
+- Minimize re-renders
+- Optimize socket messages
+- Lazy load components
+- Compress game state updates
+
+## Security
+- Validate all inputs
+- Sanitize player data
+- Rate limit socket events
+- No sensitive data in client

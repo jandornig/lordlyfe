@@ -1,0 +1,33 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Game Folder Structure
+
+## Server-Side Core Files
+- `shared/types/game.ts` - All shared type definitions and interfaces
+- `server/src/game/gameLogic.ts` - All game logic and GameManager class
+- `server/src/game/gameState.ts` - Game state management
+
+## Server-Side Supporting Files
+- `server/src/game/movement.ts` - Movement-specific logic
+- `server/src/game/supplyLine.ts` - Supply line mechanics
+- `server/src/game/matchmaking.ts` - Matchmaking logic
+- `server/src/game/ai/` - AI-related code
+
+## Client-Side Files
+- `src/contexts/GameContext.tsx` - Main game state management and socket communication
+- `src/services/socket.ts` - Socket.io client setup
+
+## Important Notes
+- All shared types must be in `shared/types/game.ts`
+- All game logic must be in `gameLogic.ts`
+- No duplicate game.ts files - use gameLogic.ts instead
+- Client MUST import types from `shared/types/game.ts`, never define its own game types
+- Client-side GameContext is now in `src/contexts/GameContext.tsx` (not in client/src. do not create a new file here)
+- All client-side imports should use `src/` as the root, not `client/src/`
+
+
+
+
